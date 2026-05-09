@@ -55,7 +55,8 @@ class ResourceManager:
                 url=row["file_path"] or "",
                 category=cat,
                 sensitivity="公開",
-                active=True,
+                active=(row["active"] == 1) if "active" in row.keys() else True,
+                last_checked=row["uploaded_at"] or "",
             ))
 
     def add_resource(self, name: str, category: str, file_path: str, description: str, uploaded_by: str) -> int:
@@ -64,8 +65,8 @@ class ResourceManager:
         
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         cursor.execute("""
-            INSERT INTO resources (name, category, file_path, description, uploaded_by, uploaded_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO resources (name, category, file_path, description, uploaded_by, uploaded_at, active)
+            VALUES (?, ?, ?, ?, ?, ?, 1)
         """, (name, category, file_path, description, uploaded_by, now))
         
         conn.commit()
@@ -74,7 +75,56 @@ class ResourceManager:
         self._load_resources()
         return new_id
 
+    def update_resource(self, resource_id: int, **kwargs):
+        """更新資源"""
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        set_clause = ", ".join([f"{k} = ?" for k in kwargs.keys()])
+        values = list(kwargs.values()) + [now, resource_id]
+        
+        cursor.execute(f"""
+            UPDATE resources SET {set_clause}, uploaded_at = ? 
+            WHERE id = ?
+        """, values)
+        
+        conn.commit()
+        conn.close()
+        self._load_resources()
+
+    def toggle_active(self, resource_id: int):
+        """切換資源的啟用狀態"""
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT active FROM resources WHERE id = ?", (resource_id,))
+        row = cursor.fetchone()
+        if row:
+            new_active = 0 if row["active"] == 1 else 1
+            cursor.execute("UPDATE resources SET active = ? WHERE id = ?", (new_active, resource_id))
+            conn.commit()
+        
+        conn.close()
+        self._load_resources()
+
+    def get_resource(self, resource_id: int) -> ResourceLink:
+        """取得特定資源"""
+        for category in self._categories.values():
+            for link in category.links:
+                if link.id == resource_id:
+                    return link
+        raise KeyError(f"Resource not found: {resource_id}")
+
+    def list_all_resources(self) -> List[ResourceLink]:
+        """列出所有資源（包含停用的）"""
+        all_resources = []
+        for category in self._categories.values():
+            all_resources.extend(category.links)
+        return sorted(all_resources, key=lambda x: x.id)
+
     def list_categories(self) -> List[ResourceCategory]:
+        return list(self._categories.values())
         return list(self._categories.values())
 
     def total_links(self) -> int:

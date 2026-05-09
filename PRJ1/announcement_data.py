@@ -39,6 +39,7 @@ class Announcement:
     due_read_date: str = ""
     created_at: str = ""
     updated_at: str = ""
+    active: bool = True
 
     def next_statuses(self) -> List[str]:
         flow = {
@@ -110,10 +111,14 @@ class AnnouncementManager:
             due_read_date=row["due_read_date"] or "",
             created_at=row["created_at"] or "",
             updated_at=row["updated_at"] or "",
+            active=(row["is_active"] == 1) if "is_active" in row.keys() else True,
         )
 
-    def list_announcements(self) -> List[Announcement]:
-        return sorted(self._announcements.values(), key=lambda x: x.id)
+    def list_announcements(self, active_only: bool = True) -> List[Announcement]:
+        announcements = sorted(self._announcements.values(), key=lambda x: x.id)
+        if active_only:
+            return [a for a in announcements if a.active]
+        return announcements
 
     def get_announcement(self, announcement_id: int) -> Optional[Announcement]:
         return self._announcements.get(announcement_id)
@@ -129,8 +134,8 @@ class AnnouncementManager:
         cursor.execute("""
             INSERT INTO announcements (title, content, category, importance, 
                 publish_status, target_scope, due_read_date, created_by, 
-                created_at, updated_at)
-            VALUES (?, ?, ?, ?, '草稿', ?, ?, 'system_admin', ?, ?)
+                created_at, updated_at, is_active)
+            VALUES (?, ?, ?, ?, '草稿', ?, ?, 'system_admin', ?, ?, 1)
         """, (title, content, category, importance, target_scope, due_read_date, now, now))
         
         conn.commit()

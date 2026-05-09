@@ -36,9 +36,16 @@ def init_database():
             created_at TEXT,
             updated_at TEXT,
             published_at TEXT,
-            archived_at TEXT
+            archived_at TEXT,
+            is_active INTEGER DEFAULT 1
         )
     """)
+    
+    # 若現有資料庫缺少 is_active 欄位，則新增它
+    cursor.execute("PRAGMA table_info(announcements)")
+    existing_columns = [row[1] for row in cursor.fetchall()]
+    if "is_active" not in existing_columns:
+        cursor.execute("ALTER TABLE announcements ADD COLUMN is_active INTEGER DEFAULT 1")
     
     # Issue 資料表
     cursor.execute("""
@@ -165,9 +172,16 @@ def init_database():
             file_path TEXT,
             description TEXT,
             uploaded_by TEXT,
-            uploaded_at TEXT
+            uploaded_at TEXT,
+            active INTEGER DEFAULT 1
         )
     """)
+    
+    # 若現有資料庫缺少 active 欄位，則新增它
+    cursor.execute("PRAGMA table_info(resources)")
+    existing_columns = [row[1] for row in cursor.fetchall()]
+    if "active" not in existing_columns:
+        cursor.execute("ALTER TABLE resources ADD COLUMN active INTEGER DEFAULT 1")
     
     # 匯出日誌資料表
     cursor.execute("""

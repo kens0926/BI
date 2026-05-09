@@ -18,6 +18,7 @@ class User:
     full_name: str = ""
     email: str = ""
     status: str = "Active"  # Active / Inactive / Suspended
+    force_password_change: bool = False  # 是否強制修改密碼
     created_at: str = ""
     updated_at: str = ""
 
@@ -56,6 +57,15 @@ class UserManager:
                 updated_at TEXT
             )
         """)
+        
+        # 檢查並添加 force_password_change 欄位
+        cursor.execute("PRAGMA table_info(users)")
+        columns = cursor.fetchall()
+        column_names = [col[1] for col in columns]
+        
+        if 'force_password_change' not in column_names:
+            cursor.execute("ALTER TABLE users ADD COLUMN force_password_change INTEGER DEFAULT 0")
+        
         conn.commit()
         conn.close()
     
@@ -109,6 +119,7 @@ class UserManager:
             full_name=row["full_name"] or "",
             email=row["email"] or "",
             status=row["status"] or "Active",
+            force_password_change=bool(row["force_password_change"]) if "force_password_change" in row.keys() else False,
             created_at=row["created_at"] or "",
             updated_at=row["updated_at"] or "",
         )
@@ -225,6 +236,33 @@ class UserManager:
         cursor.execute(
             "UPDATE users SET password = ?, updated_at = ? WHERE id = ?",
             (hashed_pwd, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user_id)
+        )
+        conn.commit()
+        conn.close()
+        
+        self._load_users()
+        return True
+
+    def update_password_by_username(self, username: str, new_password: str) -> bool:
+        """根據用戶名更新密碼"""
+        user = self.get_user_by_username(username)
+        if not user:
+            return False
+        
+        return self.change_password(user.id, new_password)
+
+    def set_force_password_change(self, username: str, force_change: bool = True) -> bool:
+        """設置用戶是否需要強制修改密碼"""
+        user = self.get_user_by_username(username)
+        if not user:
+            return False
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute(
+            "UPDATE users SET force_password_change = ?, updated_at = ? WHERE id = ?",
+            (1 if force_change else 0, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user.id)
         )
         conn.commit()
         conn.close()

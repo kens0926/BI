@@ -506,6 +506,128 @@ class ControlManager:
         
         return sorted(results, key=lambda x: x.id)
 
+    def import_from_excel(self, file_path: str) -> Dict[str, any]:
+        """從Excel文件匯入控制點"""
+        try:
+            from openpyxl import load_workbook
+        except ImportError:
+            return {"success": False, "message": "需要安裝 openpyxl 套件"}
+        
+        try:
+            wb = load_workbook(file_path)
+            ws = wb.active
+            
+            imported = 0
+            errors = []
+            
+            # 跳過header行
+            for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+                try:
+                    if not row[0]:  # 如果ID為空，跳過
+                        continue
+                    
+                    # 提取欄位
+                    control_id = str(row[0]).strip()
+                    name = str(row[1]).strip() if row[1] else ""
+                    category = str(row[2]).strip() if row[2] else ""
+                    process = str(row[3]).strip() if row[3] else ""
+                    risk_level = str(row[4]).strip() if row[4] else "M"
+                    description = str(row[5]).strip() if row[5] else ""
+                    test_frequency = str(row[6]).strip() if row[6] else "每季"
+                    
+                    # 驗證必填欄位
+                    if not control_id or not name:
+                        errors.append(f"第 {row_idx} 行：控制點ID和名稱為必填")
+                        continue
+                    
+                    # 檢查是否已存在
+                    if control_id in self._controls:
+                        # 更新現有控制點
+                        self.update_control(
+                            control_id, name=name, category=category, 
+                            process=process, risk_level=risk_level,
+                            description=description, test_frequency=test_frequency
+                        )
+                    else:
+                        # 新增控制點
+                        self.create_control(
+                            control_id, name, category, process, 
+                            risk_level, description, test_frequency,
+                            owner_dept="", owner_user=""
+                        )
+                    
+                    imported += 1
+                    
+                except Exception as e:
+                    errors.append(f"第 {row_idx} 行：{str(e)}")
+            
+            return {
+                "success": True,
+                "imported": imported,
+                "errors": errors,
+                "message": f"成功匯入 {imported} 筆控制點"
+            }
+            
+        except Exception as e:
+            return {"success": False, "message": f"匯入失敗：{str(e)}"}
+
+    def export_to_excel(self, file_path: str, controls: List[ControlPoint] = None) -> bool:
+        """匯出控制點到Excel文件"""
+        try:
+            from openpyxl import Workbook
+            from openpyxl.styles import Font, PatternFill, Alignment
+        except ImportError:
+            return False
+        
+        try:
+            if controls is None:
+                controls = self.list_controls()
+            
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "控制點"
+            
+            # 設置header
+            headers = ["控制點ID", "控制點名稱", "分類", "業務流程", "風險等級", "描述", "測試頻率"]
+            ws.append(headers)
+            
+            # 設置header樣式
+            header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+            header_font = Font(color="FFFFFF", bold=True)
+            
+            for cell in ws[1]:
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+            
+            # 添加資料
+            for ctrl in controls:
+                ws.append([
+                    ctrl.id,
+                    ctrl.name,
+                    ctrl.category,
+                    ctrl.process,
+                    RISK_LEVELS.get(ctrl.risk_level, ctrl.risk_level),
+                    ctrl.description,
+                    ctrl.test_frequency
+                ])
+            
+            # 調整列寬
+            ws.column_dimensions['A'].width = 15
+            ws.column_dimensions['B'].width = 20
+            ws.column_dimensions['C'].width = 15
+            ws.column_dimensions['D'].width = 15
+            ws.column_dimensions['E'].width = 12
+            ws.column_dimensions['F'].width = 30
+            ws.column_dimensions['G'].width = 12
+            
+            wb.save(file_path)
+            return True
+            
+        except Exception as e:
+            print(f"匯出失敗：{str(e)}")
+            return False
+
 
 # 全域控制點管理器實例
 control_manager = ControlManager()

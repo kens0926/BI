@@ -1,4 +1,4 @@
-from flask import Flask, render_template_string, redirect, url_for, session, request, flash, jsonify
+from flask import Flask, render_template_string, redirect, url_for, session, request, flash, jsonify, send_file
 from datetime import datetime
 from announcement_data import announcement_manager, PUBLISH_STATUS, ANNOUNCEMENT_CATEGORIES, IMPORTANCE_LEVELS
 from issue_data import issue_manager, WORKFLOW_STATES, EXTENSION_STATES, PRIORITY_LABELS, ISSUE_TYPES, ROOT_CAUSE_TYPES
@@ -752,6 +752,51 @@ TEMPLATE_BASE = """
       background: var(--bg-card-hover);
     }
 
+    /* General Table */
+    .table { 
+      width: 100%; 
+      border-collapse: collapse; 
+      margin-top: 20px; 
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+    .table th, .table td { 
+      border: 1px solid var(--border-color); 
+      padding: 16px 20px; 
+      text-align: left; 
+      vertical-align: middle;
+    }
+    .table th { 
+      background: var(--bg-card-hover); 
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      font-size: 0.85rem;
+      letter-spacing: 0.05em;
+      padding: 18px 20px;
+    }
+    .table tr:hover td {
+      background: var(--bg-card-hover);
+    }
+    .table td {
+      word-wrap: break-word;
+      max-width: 200px;
+    }
+
+    /* Action buttons in table cells */
+    .table .action-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      align-items: flex-start;
+    }
+
+    .table .action-buttons .button {
+      padding: 6px 12px;
+      font-size: 0.8rem;
+      min-width: auto;
+    }
+
     /* Buttons */
     .button { 
       display: inline-flex;
@@ -920,6 +965,20 @@ TEMPLATE_BASE = """
         align-items: flex-start;
         gap: 8px;
       }
+
+      .table th, .table td {
+        padding: 12px 8px;
+        font-size: 0.85rem;
+      }
+
+      .table {
+        font-size: 0.85rem;
+      }
+
+      .issue-table th, .issue-table td {
+        padding: 10px 8px;
+        font-size: 0.8rem;
+      }
     }
   </style>
 </head>
@@ -946,9 +1005,14 @@ TEMPLATE_BASE = """
     <a class="button button-secondary" href="{{ url_for('issues') }}">🔧 Issue Tracker</a>
     <a class="button button-secondary" href="{{ url_for('controls') }}">⚙️ 控制點矩陣</a>
     <a class="button button-secondary" href="{{ url_for('dashboard') }}">📊 儀表板</a>
-    <a class="button button-secondary" href="{{ url_for('audit_logs') }}">📋 稽核日誌</a>
+    {% if session.get('user_role') == 'audit_manager' or session.get('user_role') == 'system_admin' %}
+    <a class="button button-secondary" href="{{ url_for('manage_resources') }}">🔧 資源維護</a>
+    <a class="button button-secondary" href="{{ url_for('manage_controls') }}">⚙️ 控制點維護</a>
+    {% endif %}
     {% if session.get('user_role') == 'system_admin' %}
+    <a class="button button-secondary" href="{{ url_for('audit_logs') }}">📋 稽核日誌</a>
     <a class="button button-secondary" href="{{ url_for('manage_users') }}">👥 用戶管理</a>
+    <a class="button button-secondary" href="{{ url_for('manage_announcements') }}">📣 公告維護</a>
     {% endif %}
   </div>
   {% for message in get_flashed_messages() %}
@@ -1024,6 +1088,11 @@ def login():
                     f"用戶 {username} 以 {ROLE_LABELS.get(user.role, user.role)} 角色登入系統"
                 )
 
+                # 檢查是否需要強制修改密碼
+                if user.force_password_change:
+                    flash("您的密碼已重置，請設定新密碼。", "warning")
+                    return redirect(url_for("change_password"))
+
                 flash(f"歡迎登入，{username}！您的角色是：{ROLE_LABELS.get(user.role, user.role)}", "success")
                 return redirect(url_for("index"))
             else:
@@ -1052,6 +1121,10 @@ def login():
 
           <button type="submit" class="button button-primary login-btn">登入系統</button>
         </form>
+
+        <div class="forgot-password">
+          <a href="{url_for('forgot_password')}">忘記密碼？</a>
+        </div>
 
         <div class="login-info">
           <p><strong>系統說明：</strong></p>
@@ -1145,6 +1218,23 @@ def login():
       box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
     }}
 
+    .forgot-password {{
+      text-align: center;
+      margin: 20px 0;
+    }}
+
+    .forgot-password a {{
+      color: #3498db;
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.3s;
+    }}
+
+    .forgot-password a:hover {{
+      color: #2980b9;
+      text-decoration: underline;
+    }}
+
     .login-info {{
       background: #f8f9fa;
       padding: 20px;
@@ -1165,6 +1255,372 @@ def login():
     """
 
     return render_template_string(TEMPLATE_BASE, body=login_body)
+
+
+@app.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    """忘記密碼頁面"""
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        email = request.form.get("email", "").strip()
+
+        if username and email:
+            user = user_manager.get_user_by_username(username)
+            if user and user.email == email:
+                # 生成臨時密碼
+                import secrets
+                import string
+                temp_password = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(8))
+                
+                # 更新用戶密碼
+                user_manager.update_password_by_username(username, temp_password)
+                
+                # 設置強制修改密碼標記
+                user_manager.set_force_password_change(username, True)
+                
+                # 記錄稽核日誌
+                audit_log_manager.add_log(
+                    "system",
+                    "密碼重置",
+                    "系統",
+                    f"用戶 {username} 請求密碼重置，生成臨時密碼"
+                )
+                
+                flash(f"臨時密碼已生成並發送。您的臨時密碼是：{temp_password}。請使用此密碼登入後立即修改密碼。", "success")
+                return redirect(url_for("login"))
+            else:
+                flash("用戶名或Email地址不正確。", "error")
+        else:
+            flash("請輸入有效的用戶名和Email地址。", "error")
+
+    # 忘記密碼頁面
+    forgot_body = f"""
+    <div class="login-container">
+      <div class="login-card">
+        <h1>內控治理入口網站</h1>
+        <h2>忘記密碼</h2>
+
+        <form method="post" class="login-form">
+          <div class="form-group">
+            <label for="username">用戶名</label>
+            <input type="text" id="username" name="username" required placeholder="輸入您的用戶名"/>
+          </div>
+
+          <div class="form-group">
+            <label for="email">Email地址</label>
+            <input type="email" id="email" name="email" required placeholder="輸入您的註冊Email地址"/>
+          </div>
+
+          <button type="submit" class="button button-primary login-btn">重置密碼</button>
+        </form>
+
+        <div class="forgot-password">
+          <a href="{url_for('login')}">回到登入頁面</a>
+        </div>
+
+        <div class="login-info">
+          <p><strong>密碼重置說明：</strong></p>
+          <ul>
+            <li>請輸入您的用戶名和註冊時使用的Email地址</li>
+            <li>系統將生成臨時密碼並顯示在畫面上</li>
+            <li>請使用臨時密碼登入後立即修改密碼</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <style>
+    .login-container {{
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 80vh;
+      padding: 20px;
+    }}
+
+    .login-card {{
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+      padding: 40px;
+      width: 100%;
+      max-width: 450px;
+    }}
+
+    .login-card h1 {{
+      text-align: center;
+      color: #2c3e50;
+      margin-bottom: 10px;
+      font-size: 24px;
+    }}
+
+    .login-card h2 {{
+      text-align: center;
+      color: #7f8c8d;
+      margin-bottom: 30px;
+      font-size: 18px;
+    }}
+
+    .login-form {{
+      margin-bottom: 30px;
+    }}
+
+    .form-group {{
+      margin-bottom: 20px;
+    }}
+
+    .form-group label {{
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 600;
+      color: #2c3e50;
+    }}
+
+    .form-group input,
+    .form-group select {{
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e1e8ed;
+      border-radius: 6px;
+      font-size: 16px;
+      transition: border-color 0.3s;
+    }}
+
+    .form-group input:focus,
+    .form-group select:focus {{
+      outline: none;
+      border-color: #3498db;
+    }}
+
+    .login-btn {{
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #3498db, #2980b9);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }}
+
+    .login-btn:hover {{
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+    }}
+
+    .forgot-password {{
+      text-align: center;
+      margin: 20px 0;
+    }}
+
+    .forgot-password a {{
+      color: #3498db;
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.3s;
+    }}
+
+    .forgot-password a:hover {{
+      color: #2980b9;
+      text-decoration: underline;
+    }}
+
+    .login-info {{
+      background: #f8f9fa;
+      padding: 20px;
+      border-radius: 6px;
+      border-left: 4px solid #3498db;
+    }}
+
+    .login-info ul {{
+      margin: 0;
+      padding-left: 20px;
+    }}
+
+    .login-info li {{
+      margin-bottom: 8px;
+      color: #555;
+    }}
+    </style>
+    """
+
+    return render_template_string(TEMPLATE_BASE, body=forgot_body)
+
+
+@app.route("/change-password", methods=["GET", "POST"])
+@require_login()
+def change_password():
+    """密碼修改頁面"""
+    if request.method == "POST":
+        current_password = request.form.get("current_password", "").strip()
+        new_password = request.form.get("new_password", "").strip()
+        confirm_password = request.form.get("confirm_password", "").strip()
+
+        username = session.get("username")
+        user = user_manager.authenticate(username, current_password)
+
+        if not user:
+            flash("目前密碼錯誤。", "error")
+        elif not new_password or len(new_password) < 6:
+            flash("新密碼長度至少需要6個字符。", "error")
+        elif new_password != confirm_password:
+            flash("新密碼與確認密碼不一致。", "error")
+        else:
+            # 更新密碼
+            user_manager.update_password_by_username(username, new_password)
+            
+            # 清除強制修改密碼標記
+            user_manager.set_force_password_change(username, False)
+            
+            # 記錄稽核日誌
+            audit_log_manager.add_log(
+                username,
+                "密碼修改",
+                "系統",
+                f"用戶 {username} 修改密碼"
+            )
+            
+            flash("密碼已成功修改。", "success")
+            return redirect(url_for("index"))
+
+    # 密碼修改頁面
+    change_body = f"""
+    <div class="login-container">
+      <div class="login-card">
+        <h1>內控治理入口網站</h1>
+        <h2>修改密碼</h2>
+
+        <form method="post" class="login-form">
+          <div class="form-group">
+            <label for="current_password">目前密碼</label>
+            <input type="password" id="current_password" name="current_password" required placeholder="輸入目前密碼"/>
+          </div>
+
+          <div class="form-group">
+            <label for="new_password">新密碼</label>
+            <input type="password" id="new_password" name="new_password" required placeholder="輸入新密碼（至少6個字符）"/>
+          </div>
+
+          <div class="form-group">
+            <label for="confirm_password">確認新密碼</label>
+            <input type="password" id="confirm_password" name="confirm_password" required placeholder="再次輸入新密碼"/>
+          </div>
+
+          <button type="submit" class="button button-primary login-btn">修改密碼</button>
+        </form>
+
+        <div class="login-info">
+          <p><strong>密碼修改說明：</strong></p>
+          <ul>
+            <li>新密碼長度至少需要6個字符</li>
+            <li>請使用強密碼，包含字母和數字</li>
+            <li>修改密碼後請妥善保管</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <style>
+    .login-container {{
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 80vh;
+      padding: 20px;
+    }}
+
+    .login-card {{
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+      padding: 40px;
+      width: 100%;
+      max-width: 450px;
+    }}
+
+    .login-card h1 {{
+      text-align: center;
+      color: #2c3e50;
+      margin-bottom: 10px;
+      font-size: 24px;
+    }}
+
+    .login-card h2 {{
+      text-align: center;
+      color: #7f8c8d;
+      margin-bottom: 30px;
+      font-size: 18px;
+    }}
+
+    .login-form {{
+      margin-bottom: 30px;
+    }}
+
+    .form-group {{
+      margin-bottom: 20px;
+    }}
+
+    .form-group label {{
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 600;
+      color: #2c3e50;
+    }}
+
+    .form-group input {{
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e1e8ed;
+      border-radius: 6px;
+      font-size: 16px;
+      transition: border-color 0.3s;
+    }}
+
+    .form-group input:focus {{
+      outline: none;
+      border-color: #3498db;
+    }}
+
+    .login-btn {{
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #3498db, #2980b9);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }}
+
+    .login-btn:hover {{
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+    }}
+
+    .login-info {{
+      background: #f8f9fa;
+      padding: 20px;
+      border-radius: 6px;
+      border-left: 4px solid #3498db;
+    }}
+
+    .login-info ul {{
+      margin: 0;
+      padding-left: 20px;
+    }}
+
+    .login-info li {{
+      margin-bottom: 8px;
+      color: #555;
+    }}
+    </style>
+    """
+
+    return render_template_string(TEMPLATE_BASE, body=change_body)
 
 
 @app.route("/logout")
@@ -1190,7 +1646,7 @@ def logout():
 @app.route("/")
 @require_login()
 def index():
-    announcements = announcement_manager.list_announcements()
+    announcements = announcement_manager.list_announcements(active_only=True)
     read_ids = set(session.get("read_announcements", []))
     forced_items = [a for a in announcements if a.force_read and a.id not in read_ids]
     total_count = len(announcements)
@@ -1317,15 +1773,160 @@ def manage_users():
     for user in users:
         action_label = "停用" if user.is_active() else "啟用"
         action_class = "button button-secondary" if user.is_active() else "button button-primary"
-        body += f"<tr><td>{user.id}</td><td>{user.username}</td><td>{ROLE_LABELS.get(user.role, user.role)}</td><td>{user.full_name}</td><td>{user.email}</td><td>{user.status}</td><td>"
+        body += f"<tr><td>{user.id}</td><td>{user.username}</td><td>{ROLE_LABELS.get(user.role, user.role)}</td><td>{user.full_name}</td><td>{user.email}</td><td>{user.status}</td><td class=\"action-buttons\">"
         body += f"<a class=\"button button-secondary\" href=\"{url_for('edit_user', user_id=user.id)}\">編輯</a> "
         if user.username != session.get("username"):
             body += f"<form method=\"post\" action=\"{url_for('toggle_user_status', user_id=user.id)}\" style=\"display:inline;\"><button class=\"{action_class}\" type=\"submit\">{action_label}</button></form>"
         else:
-            body += f"<span style=\"color:#666;\">{action_label}目前登入帳號請改用編輯頁面</span>"
+            body += f"<span style=\"color:#666; font-size:0.8rem;\">{action_label}目前登入帳號請改用編輯頁面</span>"
         body += "</td></tr>"
     body += "</tbody></table></div>"
 
+    return render_template_string(TEMPLATE_BASE, body=body)
+
+
+@app.route("/announcements/manage", methods=["GET", "POST"])
+@require_login()
+@require_permission("can_create_announcement")
+def manage_announcements():
+    if request.method == "POST":
+        title = request.form.get("title", "").strip()
+        content = request.form.get("content", "").strip()
+        category = request.form.get("category", ANNOUNCEMENT_CATEGORIES[0])
+        importance = request.form.get("importance", IMPORTANCE_LEVELS[1])
+        target_scope = request.form.get("target_scope", "全體").strip()
+        due_read_date = request.form.get("due_read_date", "").strip()
+
+        if not title or not content:
+            flash("請填寫公告標題與內容。", "error")
+        else:
+            announcement_manager.create_announcement(title, content, category, importance, target_scope, due_read_date)
+            audit_log_manager.add_log(
+                session.get("username", "system"),
+                "建立公告",
+                "公告維護",
+                f"新增公告：{title}"
+            )
+            flash("公告已建立，預設為草稿狀態。", "success")
+            return redirect(url_for("manage_announcements"))
+
+    announcements = announcement_manager.list_announcements(active_only=False)
+    body = ""
+    body += "<div class=\"card\"><h2>公告維護</h2>"
+    body += "<p>系統管理員可以新增公告，並啟用/停用現有公告。</p></div>"
+    body += "<div class=\"card\"><h3>新增公告</h3>"
+    body += "<form method=\"post\" class=\"form-grid\">"
+    body += "<div class=\"form-group\"><label for=\"title\">標題</label><input type=\"text\" id=\"title\" name=\"title\" required placeholder=\"公告標題\"/></div>"
+    body += "<div class=\"form-group\"><label for=\"content\">內容</label><textarea id=\"content\" name=\"content\" rows=4 required placeholder=\"公告內容\"></textarea></div>"
+    body += "<div class=\"form-group\"><label for=\"category\">分類</label><select id=\"category\" name=\"category\">"
+    for category in ANNOUNCEMENT_CATEGORIES:
+        body += f"<option value=\"{category}\">{category}</option>"
+    body += "</select></div>"
+    body += "<div class=\"form-group\"><label for=\"importance\">重要級</label><select id=\"importance\" name=\"importance\">"
+    for importance in IMPORTANCE_LEVELS:
+        body += f"<option value=\"{importance}\">{importance}</option>"
+    body += "</select></div>"
+    body += "<div class=\"form-group\"><label for=\"target_scope\">目標對象</label><input type=\"text\" id=\"target_scope\" name=\"target_scope\" value=\"全體\"/></div>"
+    body += "<div class=\"form-group\"><label for=\"due_read_date\">閱讀截止日</label><input type=\"date\" id=\"due_read_date\" name=\"due_read_date\"/></div>"
+    body += "<div class=\"form-actions\"><button class=\"button button-primary\" type=\"submit\">建立公告</button></div>"
+    body += "</form></div>"
+    body += "<div class=\"card\"><h3>公告清單</h3><table class=\"table\"><thead><tr><th>ID</th><th>標題</th><th>分類</th><th>重要級</th><th>狀態</th><th>是否啟用</th><th>操作</th></tr></thead><tbody>"
+    for item in announcements:
+        status_badge = item.publish_status
+        active_label = "啟用" if item.active else "停用"
+        toggle_label = "停用" if item.active else "啟用"
+        button_class = "button button-secondary" if item.active else "button button-primary"
+        body += f"<tr><td>{item.id}</td><td>{item.current_version.title}</td><td>{item.category}</td><td>{item.importance}</td><td>{status_badge}</td><td>{active_label}</td><td class=\"action-buttons\">"
+        body += f"<a class=\"button button-secondary\" href=\"{url_for('edit_announcement', announcement_id=item.id)}\">編輯</a> "
+        body += f"<form method=\"post\" action=\"{url_for('toggle_announcement_active', announcement_id=item.id)}\" style=\"display:inline; margin-left:8px;\">"
+        body += f"<button class=\"{button_class}\" type=\"submit\">{toggle_label}</button></form>"
+        body += "</td></tr>"
+    body += "</tbody></table></div>"
+    body += f"<a class=\"button button-secondary\" href=\"{url_for('index')}\">回到公告中心</a>"
+    return render_template_string(TEMPLATE_BASE, body=body)
+
+
+@app.route("/announcements/<int:announcement_id>/toggle_active", methods=["POST"])
+@require_login()
+@require_permission("can_delete_announcement")
+def toggle_announcement_active(announcement_id):
+    announcement = announcement_manager.get_announcement(announcement_id)
+    if announcement is None:
+        flash("找不到指定公告。", "error")
+        return redirect(url_for("manage_announcements"))
+
+    new_active = not announcement.active
+    announcement_manager.update_announcement(announcement_id, is_active=1 if new_active else 0)
+    action = "啟用" if new_active else "停用"
+    audit_log_manager.add_log(
+        get_current_role(),
+        f"{action} 公告",
+        "公告維護",
+        f"公告 ID: {announcement_id} - {announcement.current_version.title}"
+    )
+    flash(f"公告已成功{action}。", "success")
+    return redirect(url_for("manage_announcements"))
+
+
+@app.route("/announcements/<int:announcement_id>/edit", methods=["GET", "POST"])
+@require_login()
+@require_permission("can_edit_announcement")
+def edit_announcement(announcement_id):
+    announcement = announcement_manager.get_announcement(announcement_id)
+    if announcement is None:
+        flash("找不到指定公告。", "error")
+        return redirect(url_for("manage_announcements"))
+
+    if request.method == "POST":
+        title = request.form.get("title", "").strip()
+        content = request.form.get("content", "").strip()
+        category = request.form.get("category", ANNOUNCEMENT_CATEGORIES[0])
+        importance = request.form.get("importance", IMPORTANCE_LEVELS[1])
+        target_scope = request.form.get("target_scope", "全體").strip()
+        due_read_date = request.form.get("due_read_date", "").strip()
+
+        if not title or not content:
+            flash("請填寫公告標題與內容。", "error")
+        else:
+            announcement_manager.update_announcement(
+                announcement_id,
+                title=title,
+                content=content,
+                category=category,
+                importance=importance,
+                target_scope=target_scope,
+                due_read_date=due_read_date
+            )
+            audit_log_manager.add_log(
+                session.get("username", "system"),
+                "編輯公告",
+                "公告維護",
+                f"公告 ID: {announcement_id} - {title}"
+            )
+            flash("公告已更新。", "success")
+            return redirect(url_for("manage_announcements"))
+
+    body = ""
+    body += f"<div class=\"card\"><h2>編輯公告：{announcement.current_version.title}</h2>"
+    body += "<p>更新公告標題、內容與屬性。</p></div>"
+    body += "<div class=\"card\"><form method=\"post\" class=\"form-grid\">"
+    body += f"<div class=\"form-group\"><label for=\"title\">標題</label><input type=\"text\" id=\"title\" name=\"title\" value=\"{announcement.current_version.title}\" required/></div>"
+    body += f"<div class=\"form-group\"><label for=\"content\">內容</label><textarea id=\"content\" name=\"content\" rows=4 required>{announcement.current_version.body}</textarea></div>"
+    body += "<div class=\"form-group\"><label for=\"category\">分類</label><select id=\"category\" name=\"category\">"
+    for category in ANNOUNCEMENT_CATEGORIES:
+        selected = "selected" if announcement.category == category else ""
+        body += f"<option value=\"{category}\" {selected}>{category}</option>"
+    body += "</select></div>"
+    body += "<div class=\"form-group\"><label for=\"importance\">重要級</label><select id=\"importance\" name=\"importance\">"
+    for importance in IMPORTANCE_LEVELS:
+        selected = "selected" if announcement.importance == importance else ""
+        body += f"<option value=\"{importance}\" {selected}>{importance}</option>"
+    body += "</select></div>"
+    body += f"<div class=\"form-group\"><label for=\"target_scope\">目標對象</label><input type=\"text\" id=\"target_scope\" name=\"target_scope\" value=\"{announcement.target_scope}\"/></div>"
+    body += f"<div class=\"form-group\"><label for=\"due_read_date\">閱讀截止日</label><input type=\"date\" id=\"due_read_date\" name=\"due_read_date\" value=\"{announcement.due_read_date}\"/></div>"
+    body += "<div class=\"form-actions\"><button class=\"button button-primary\" type=\"submit\">儲存變更</button>"
+    body += f" <a class=\"button button-secondary\" href=\"{url_for('manage_announcements')}\">取消</a></div>"
+    body += "</form></div>"
     return render_template_string(TEMPLATE_BASE, body=body)
 
 
@@ -1423,9 +2024,14 @@ def resources():
     """
 
     for category in categories:
+        # 只顯示有啟用資源的分類
+        active_links = [link for link in category.links if link.active]
+        if not active_links:
+            continue
+            
         body += f"<div class=\"card\"><div class=\"category\">{category.name}</div><p>{category.description}</p>"
         body += "<div class=\"resource-grid\">"
-        for link in category.links:
+        for link in active_links:
             status_text = "正常" if link.active else "失效"
             status_class = "badge badge-low" if link.active else "badge badge-medium"
             body += f"<div class=\"resource-item\">"
@@ -1438,9 +2044,133 @@ def resources():
     return render_template_string(TEMPLATE_BASE, body=body)
 
 
+@app.route("/resources/manage", methods=["GET", "POST"])
+@require_login()
+@require_permission("can_manage_resources")
+def manage_resources():
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        category = request.form.get("category", "").strip()
+        file_path = request.form.get("file_path", "").strip()
+        description = request.form.get("description", "").strip()
+
+        if not name or not category or not file_path:
+            flash("請填寫資源名稱、分類與檔案路徑。", "error")
+        else:
+            resource_manager.add_resource(name, category, file_path, description, session.get("username", "system"))
+            audit_log_manager.add_log(
+                session.get("username", "system"),
+                "建立資源",
+                "資源維護",
+                f"新增資源：{name}"
+            )
+            flash("資源已建立。", "success")
+            return redirect(url_for("manage_resources"))
+
+    resources = resource_manager.list_all_resources()
+    body = ""
+    body += "<div class=\"card\"><h2>資源庫維護</h2>"
+    body += "<p>稽核主管可以新增資源，並啟用/停用現有資源。</p></div>"
+    body += "<div class=\"card\"><h3>新增資源</h3>"
+    body += "<form method=\"post\" class=\"form-grid\">"
+    body += "<div class=\"form-group\"><label for=\"name\">資源名稱</label><input type=\"text\" id=\"name\" name=\"name\" required placeholder=\"資源標題\"/></div>"
+    body += "<div class=\"form-group\"><label for=\"category\">分類</label><input type=\"text\" id=\"category\" name=\"category\" required placeholder=\"例如：法規、政策、程序\"/></div>"
+    body += "<div class=\"form-group\"><label for=\"file_path\">檔案路徑/URL</label><input type=\"text\" id=\"file_path\" name=\"file_path\" required placeholder=\"檔案路徑或外部連結\"/></div>"
+    body += "<div class=\"form-group\"><label for=\"description\">描述</label><textarea id=\"description\" name=\"description\" rows=3 placeholder=\"資源簡要說明\"></textarea></div>"
+    body += "<div class=\"form-actions\"><button class=\"button button-primary\" type=\"submit\">建立資源</button></div>"
+    body += "</form></div>"
+    body += "<div class=\"card\"><h3>資源清單</h3><table class=\"table\"><thead><tr><th>ID</th><th>名稱</th><th>分類</th><th>路徑</th><th>狀態</th><th>操作</th></tr></thead><tbody>"
+    for resource in resources:
+        status_text = "啟用" if resource.active else "停用"
+        toggle_label = "停用" if resource.active else "啟用"
+        button_class = "button button-secondary" if resource.active else "button button-primary"
+        body += f"<tr><td>{resource.id}</td><td>{resource.title}</td><td>{resource.category}</td><td>{resource.url}</td><td>{status_text}</td><td class=\"action-buttons\">"
+        body += f"<a class=\"button button-secondary\" href=\"{url_for('edit_resource', resource_id=resource.id)}\">編輯</a> "
+        body += f"<form method=\"post\" action=\"{url_for('toggle_resource_active', resource_id=resource.id)}\" style=\"display:inline; margin-left:8px;\">"
+        body += f"<button class=\"{button_class}\" type=\"submit\">{toggle_label}</button></form>"
+        body += "</td></tr>"
+    body += "</tbody></table></div>"
+    body += f"<a class=\"button button-secondary\" href=\"{url_for('resources')}\">回到資源庫</a>"
+    return render_template_string(TEMPLATE_BASE, body=body)
+
+
+@app.route("/resources/<int:resource_id>/edit", methods=["GET", "POST"])
+@require_login()
+@require_permission("can_manage_resources")
+def edit_resource(resource_id):
+    try:
+        resource = resource_manager.get_resource(resource_id)
+    except KeyError:
+        flash("找不到指定資源。", "error")
+        return redirect(url_for("manage_resources"))
+
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        category = request.form.get("category", "").strip()
+        file_path = request.form.get("file_path", "").strip()
+        description = request.form.get("description", "").strip()
+
+        if not name or not category or not file_path:
+            flash("請填寫資源名稱、分類與檔案路徑。", "error")
+        else:
+            resource_manager.update_resource(
+                resource_id,
+                name=name,
+                category=category,
+                file_path=file_path,
+                description=description
+            )
+            audit_log_manager.add_log(
+                session.get("username", "system"),
+                "編輯資源",
+                "資源維護",
+                f"資源 ID: {resource_id} - {name}"
+            )
+            flash("資源已更新。", "success")
+            return redirect(url_for("manage_resources"))
+
+    body = ""
+    body += f"<div class=\"card\"><h2>編輯資源：{resource.title}</h2>"
+    body += "<p>更新資源名稱、分類與路徑。</p></div>"
+    body += "<div class=\"card\"><form method=\"post\" class=\"form-grid\">"
+    body += f"<div class=\"form-group\"><label for=\"name\">資源名稱</label><input type=\"text\" id=\"name\" name=\"name\" value=\"{resource.title}\" required/></div>"
+    body += f"<div class=\"form-group\"><label for=\"category\">分類</label><input type=\"text\" id=\"category\" name=\"category\" value=\"{resource.category}\" required/></div>"
+    body += f"<div class=\"form-group\"><label for=\"file_path\">檔案路徑/URL</label><input type=\"text\" id=\"file_path\" name=\"file_path\" value=\"{resource.url}\" required/></div>"
+    body += f"<div class=\"form-group\"><label for=\"description\">描述</label><textarea id=\"description\" name=\"description\" rows=3>{resource.description}</textarea></div>"
+    body += "<div class=\"form-actions\"><button class=\"button button-primary\" type=\"submit\">儲存變更</button>"
+    body += f" <a class=\"button button-secondary\" href=\"{url_for('manage_resources')}\">取消</a></div>"
+    body += "</form></div>"
+    return render_template_string(TEMPLATE_BASE, body=body)
+
+
+@app.route("/resources/<int:resource_id>/toggle_active", methods=["POST"])
+@require_login()
+@require_permission("can_manage_resources")
+def toggle_resource_active(resource_id):
+    try:
+        resource = resource_manager.get_resource(resource_id)
+        resource_manager.toggle_active(resource_id)
+        new_status = "停用" if resource.active else "啟用"
+        audit_log_manager.add_log(
+            get_current_role(),
+            f"{new_status} 資源",
+            "資源維護",
+            f"資源 ID: {resource_id} - {resource.title}"
+        )
+        flash(f"資源已成功{new_status}。", "success")
+    except KeyError:
+        flash("找不到指定資源。", "error")
+    
+    return redirect(url_for("manage_resources"))
+
+
 @app.route("/audit_logs")
 @require_login()
 def audit_logs():
+    if get_current_role() != Role.SYSTEM_ADMIN:
+        flash("您沒有權限檢視稽核日誌。", "error")
+        return redirect(url_for("index"))
+
     logs = audit_log_manager.get_logs()
     body = f"""
     <div class=\"card\">
@@ -2287,6 +3017,290 @@ def transition_control_test(control_id):
         flash("無效的狀態轉換。")
     
     return redirect(url_for("control_detail", control_id=control_id))
+
+
+@app.route("/controls/manage", methods=["GET", "POST"])
+@require_login()
+@require_permission("can_edit_control")
+def manage_controls():
+    """控制點維護頁面"""
+    if request.method == "POST":
+        action = request.form.get("action", "")
+        
+        if action == "add":
+            control_id = request.form.get("control_id", "").strip()
+            name = request.form.get("name", "").strip()
+            category = request.form.get("category", "").strip()
+            process = request.form.get("process", "").strip()
+            risk_level = request.form.get("risk_level", "M")
+            description = request.form.get("description", "").strip()
+            test_frequency = request.form.get("test_frequency", "每季")
+            
+            if not control_id or not name:
+                flash("控制點ID和名稱為必填。", "error")
+            else:
+                try:
+                    control_manager.create_control(
+                        control_id, name, category, process, risk_level,
+                        description, test_frequency, "", session.get("username", "system")
+                    )
+                    audit_log_manager.add_log(
+                        session.get("username", "system"),
+                        "建立控制點",
+                        "控制點維護",
+                        f"新增控制點：{control_id} - {name}"
+                    )
+                    flash(f"控制點 {control_id} 已建立。", "success")
+                    return redirect(url_for("manage_controls"))
+                except ValueError as e:
+                    flash(str(e), "error")
+    
+    controls = control_manager.list_controls()
+    body = ""
+    body += "<div class=\"card\"><h2>控制點維護</h2>"
+    body += "<p>稽核主管可以新增、編輯與停用控制點。</p></div>"
+    
+    # 上傳Excel表單
+    body += "<div class=\"card\"><h3>批次匯入/匯出</h3>"
+    body += "<div class=\"form-actions\" style=\"margin-bottom: 20px;\">"
+    body += "<a class=\"button button-primary\" href=\"" + url_for('export_controls_excel') + "\">📥 下載控制點</a>"
+    body += "</div>"
+    body += "<form method=\"post\" enctype=\"multipart/form-data\" action=\"" + url_for('import_controls_excel') + "\">"
+    body += "<div class=\"form-group\"><label for=\"excel_file\">上傳Excel檔案</label>"
+    body += "<input type=\"file\" id=\"excel_file\" name=\"excel_file\" accept=\".xlsx,.xls\" required/>"
+    body += "</div>"
+    body += "<div class=\"form-actions\"><button class=\"button button-primary\" type=\"submit\">匯入控制點</button></div>"
+    body += "</form></div>"
+    
+    # 新增控制點表單
+    body += "<div class=\"card\"><h3>新增控制點</h3>"
+    body += "<form method=\"post\" class=\"form-grid\">"
+    body += "<input type=\"hidden\" name=\"action\" value=\"add\"/>"
+    body += "<div class=\"form-group\"><label for=\"control_id\">控制點ID</label><input type=\"text\" id=\"control_id\" name=\"control_id\" required placeholder=\"例如：CP-001\"/></div>"
+    body += "<div class=\"form-group\"><label for=\"name\">控制點名稱</label><input type=\"text\" id=\"name\" name=\"name\" required placeholder=\"控制點名稱\"/></div>"
+    body += "<div class=\"form-group\"><label for=\"category\">分類</label><select id=\"category\" name=\"category\">"
+    for cat in ["存取控制", "帳務核覆", "資安管理", "採購流程", "人事管理", "財務管理", "風險管理", "法規遵循"]:
+        body += f"<option value=\"{cat}\">{cat}</option>"
+    body += "</select></div>"
+    body += "<div class=\"form-group\"><label for=\"process\">業務流程</label><select id=\"process\" name=\"process\">"
+    for proc in PROCESSES:
+        body += f"<option value=\"{proc}\">{proc}</option>"
+    body += "</select></div>"
+    body += "<div class=\"form-group\"><label for=\"risk_level\">風險等級</label><select id=\"risk_level\" name=\"risk_level\">"
+    body += "<option value=\"H\">高</option><option value=\"M\" selected>中</option><option value=\"L\">低</option>"
+    body += "</select></div>"
+    body += "<div class=\"form-group\"><label for=\"test_frequency\">測試頻率</label><select id=\"test_frequency\" name=\"test_frequency\">"
+    for freq in ["每月", "每季", "每半年", "每年"]:
+        body += f"<option value=\"{freq}\" {'selected' if freq == '每季' else ''}>{freq}</option>"
+    body += "</select></div>"
+    body += "<div class=\"form-group\" style=\"grid-column: 1 / -1;\"><label for=\"description\">描述</label><textarea id=\"description\" name=\"description\" rows=\"3\" placeholder=\"控制點描述\"></textarea></div>"
+    body += "<div class=\"form-actions\"><button class=\"button button-primary\" type=\"submit\">新增控制點</button></div>"
+    body += "</form></div>"
+    
+    # 控制點列表
+    body += "<div class=\"card\"><h3>控制點清單 (" + str(len(controls)) + ")</h3>"
+    body += "<table class=\"table\"><thead><tr><th>ID</th><th>名稱</th><th>分類</th><th>流程</th><th>風險</th><th>測試頻率</th><th>狀態</th><th>操作</th></tr></thead><tbody>"
+    
+    for ctrl in controls:
+        risk_label = RISK_LEVELS.get(ctrl.risk_level, ctrl.risk_level)
+        body += f"<tr><td>{ctrl.id}</td><td>{ctrl.name}</td><td>{ctrl.category}</td><td>{ctrl.process}</td>"
+        body += f"<td>{risk_label}</td><td>{ctrl.test_frequency}</td><td>{ctrl.status}</td>"
+        body += f"<td class=\"action-buttons\">"
+        body += f"<a class=\"button button-secondary\" href=\"{url_for('edit_control', control_id=ctrl.id)}\">編輯</a> "
+        body += f"<form method=\"post\" action=\"{url_for('delete_control', control_id=ctrl.id)}\" style=\"display:inline;\">"
+        body += f"<button class=\"button button-secondary\" type=\"submit\" onclick=\"return confirm('確定要停用此控制點嗎？');\">停用</button></form>"
+        body += f"</td></tr>"
+    
+    body += "</tbody></table></div>"
+    body += f"<a class=\"button button-secondary\" href=\"{url_for('controls')}\">回到控制點矩陣</a>"
+    
+    return render_template_string(TEMPLATE_BASE, body=body)
+
+
+@app.route("/controls/<control_id>/edit", methods=["GET", "POST"])
+@require_login()
+@require_permission("can_edit_control")
+def edit_control(control_id):
+    """編輯控制點"""
+    control = control_manager.get_control(control_id)
+    if not control:
+        flash("找不到指定的控制點。", "error")
+        return redirect(url_for("manage_controls"))
+    
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        category = request.form.get("category", "").strip()
+        process = request.form.get("process", "").strip()
+        risk_level = request.form.get("risk_level", "M")
+        description = request.form.get("description", "").strip()
+        test_frequency = request.form.get("test_frequency", "每季")
+        
+        control_manager.update_control(
+            control_id, name=name, category=category, process=process,
+            risk_level=risk_level, description=description, test_frequency=test_frequency
+        )
+        
+        audit_log_manager.add_log(
+            session.get("username", "system"),
+            "編輯控制點",
+            "控制點維護",
+            f"修改控制點：{control_id}"
+        )
+        
+        flash("控制點已更新。", "success")
+        return redirect(url_for("manage_controls"))
+    
+    body = ""
+    body += "<div class=\"card\"><h2>編輯控制點</h2>"
+    body += "<p>修改控制點的相關資訊。</p></div>"
+    body += "<div class=\"card\"><form method=\"post\" class=\"form-grid\">"
+    body += f"<div class=\"form-group\"><label>控制點ID</label><input type=\"text\" value=\"{control.id}\" disabled/></div>"
+    body += f"<div class=\"form-group\"><label for=\"name\">控制點名稱</label><input type=\"text\" id=\"name\" name=\"name\" value=\"{control.name}\" required/></div>"
+    body += f"<div class=\"form-group\"><label for=\"category\">分類</label><select id=\"category\" name=\"category\">"
+    for cat in ["存取控制", "帳務核覆", "資安管理", "採購流程", "人事管理", "財務管理", "風險管理", "法規遵循"]:
+        selected = "selected" if cat == control.category else ""
+        body += f"<option value=\"{cat}\" {selected}>{cat}</option>"
+    body += "</select></div>"
+    body += f"<div class=\"form-group\"><label for=\"process\">業務流程</label><select id=\"process\" name=\"process\">"
+    for proc in PROCESSES:
+        selected = "selected" if proc == control.process else ""
+        body += f"<option value=\"{proc}\" {selected}>{proc}</option>"
+    body += "</select></div>"
+    body += f"<div class=\"form-group\"><label for=\"risk_level\">風險等級</label><select id=\"risk_level\" name=\"risk_level\">"
+    for level, label in [("H", "高"), ("M", "中"), ("L", "低")]:
+        selected = "selected" if level == control.risk_level else ""
+        body += f"<option value=\"{level}\" {selected}>{label}</option>"
+    body += "</select></div>"
+    body += f"<div class=\"form-group\"><label for=\"test_frequency\">測試頻率</label><select id=\"test_frequency\" name=\"test_frequency\">"
+    for freq in ["每月", "每季", "每半年", "每年"]:
+        selected = "selected" if freq == control.test_frequency else ""
+        body += f"<option value=\"{freq}\" {selected}>{freq}</option>"
+    body += "</select></div>"
+    body += f"<div class=\"form-group\" style=\"grid-column: 1 / -1;\"><label for=\"description\">描述</label><textarea id=\"description\" name=\"description\" rows=\"4\">{control.description}</textarea></div>"
+    body += "<div class=\"form-actions\"><button class=\"button button-primary\" type=\"submit\">保存修改</button></div>"
+    body += "</form></div>"
+    body += f"<a class=\"button button-secondary\" href=\"{url_for('manage_controls')}\">取消</a>"
+    
+    return render_template_string(TEMPLATE_BASE, body=body)
+
+
+@app.route("/controls/<control_id>/delete", methods=["POST"])
+@require_login()
+@require_permission("can_disable_control")
+def delete_control(control_id):
+    """停用控制點"""
+    if control_manager.delete_control(control_id):
+        audit_log_manager.add_log(
+            session.get("username", "system"),
+            "停用控制點",
+            "控制點維護",
+            f"停用控制點：{control_id}"
+        )
+        flash("控制點已停用。", "success")
+    else:
+        flash("無法停用該控制點。", "error")
+    
+    return redirect(url_for("manage_controls"))
+
+
+@app.route("/controls/export-excel", methods=["GET"])
+@require_login()
+@require_permission("can_edit_control")
+def export_controls_excel():
+    """匯出所有控制點到Excel檔案"""
+    import tempfile
+    import os
+    from datetime import datetime
+    
+    try:
+        # 創建臨時Excel檔案
+        temp_dir = tempfile.gettempdir()
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        temp_file = os.path.join(temp_dir, f"controls_{timestamp}.xlsx")
+        
+        # 匯出所有控制點
+        controls = control_manager.list_controls()
+        success = control_manager.export_to_excel(temp_file, controls)
+        
+        if not success:
+            flash("匯出失敗：無法生成Excel檔案。", "error")
+            return redirect(url_for("manage_controls"))
+        
+        # 記錄審核日誌
+        audit_log_manager.add_log(
+            session.get("username", "system"),
+            "匯出控制點",
+            "控制點維護",
+            f"下載Excel檔案，共 {len(controls)} 筆控制點"
+        )
+        
+        # 讀取檔案並發送
+        from flask import send_file
+        filename = f"控制點清單_{timestamp}.xlsx"
+        
+        return send_file(
+            temp_file,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name=filename
+        )
+    
+    except Exception as e:
+        flash(f"匯出出錯：{str(e)}", "error")
+        return redirect(url_for("manage_controls"))
+
+
+@app.route("/controls/import-excel", methods=["POST"])
+@require_login()
+@require_permission("can_edit_control")
+def import_controls_excel():
+    """從Excel匯入控制點"""
+    if 'excel_file' not in request.files:
+        flash("請選擇Excel檔案。", "error")
+        return redirect(url_for("manage_controls"))
+    
+    file = request.files['excel_file']
+    if file.filename == '':
+        flash("請選擇Excel檔案。", "error")
+        return redirect(url_for("manage_controls"))
+    
+    if not file.filename.endswith(('.xlsx', '.xls')):
+        flash("請上傳Excel檔案 (.xlsx 或 .xls)。", "error")
+        return redirect(url_for("manage_controls"))
+    
+    try:
+        # 保存上傳的檔案
+        import tempfile
+        import os
+        temp_dir = tempfile.gettempdir()
+        temp_file = os.path.join(temp_dir, file.filename)
+        file.save(temp_file)
+        
+        # 匯入
+        result = control_manager.import_from_excel(temp_file)
+        
+        # 刪除臨時檔案
+        os.remove(temp_file)
+        
+        if result['success']:
+            audit_log_manager.add_log(
+                session.get("username", "system"),
+                "批次匯入控制點",
+                "控制點維護",
+                f"從Excel匯入 {result['imported']} 筆控制點"
+            )
+            flash(f"成功匯入 {result['imported']} 筆控制點", "success")
+            
+            if result.get('errors'):
+                for error in result['errors'][:5]:
+                    flash(f"警告：{error}", "warning")
+        else:
+            flash(f"匯入失敗：{result['message']}", "error")
+    
+    except Exception as e:
+        flash(f"匯入出錯：{str(e)}", "error")
+    
+    return redirect(url_for("manage_controls"))
 
 
 if __name__ == "__main__":
