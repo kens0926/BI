@@ -1,4 +1,5 @@
 from flask import Flask, render_template_string, redirect, url_for, session, request, flash, jsonify, send_file
+from werkzeug.routing import BuildError
 from datetime import datetime
 from announcement_data import announcement_manager, PUBLISH_STATUS, ANNOUNCEMENT_CATEGORIES, IMPORTANCE_LEVELS
 from issue_data import issue_manager, WORKFLOW_STATES, EXTENSION_STATES, PRIORITY_LABELS, ISSUE_TYPES, ROOT_CAUSE_TYPES
@@ -192,7 +193,9 @@ ROLE_PERMISSIONS = {
 
 def get_current_role() -> str:
     """取得目前登入者的角色，預設為 R05 Process Owner"""
-    return session.get("user_role", Role.PROCESS_OWNER)
+    role = session.get("user_role", Role.PROCESS_OWNER)
+    print(f"DEBUG: get_current_role() - session user_role: {session.get('user_role')}, returning: {role}")
+    return role
 
 
 def get_current_role_label() -> str:
@@ -214,8 +217,11 @@ def require_permission(permission: str):
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            if not has_permission(permission):
-                flash("您沒有權限執行此操作。", "error")
+            role = get_current_role()
+            has_perm = has_permission(permission)
+            print(f"DEBUG: User role: {role}, Permission: {permission}, Has permission: {has_perm}")  # 調試信息
+            if not has_perm:
+                flash(f"您沒有權限執行此操作。您的角色：{role}", "error")
                 return redirect(url_for("index"))
             return f(*args, **kwargs)
 
@@ -230,6 +236,15 @@ def is_logged_in() -> bool:
     return session.get("logged_in", False)
 
 
+def safe_url_for(endpoint, **values):
+    try:
+        return url_for(endpoint, **values)
+    except BuildError:
+        return "#"
+
+app.jinja_env.globals['safe_url_for'] = safe_url_for
+
+
 def require_login():
     """裝飾器：用於需要登入的路由"""
     from functools import wraps
@@ -237,7 +252,9 @@ def require_login():
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            if not is_logged_in():
+            logged_in = is_logged_in()
+            print(f"DEBUG: require_login - is_logged_in: {logged_in}")
+            if not logged_in:
                 return redirect(url_for("login"))
             return f(*args, **kwargs)
 
@@ -363,23 +380,33 @@ TEMPLATE_BASE = """
       --category-color: #60a5fa;
     }
 
+    [data-theme="dark"] .button-secondary {
+      background: rgba(255, 255, 255, 0.22);
+      color: #e2e8f0;
+      border-color: rgba(148, 163, 184, 0.85);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { 
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif; 
       margin: 0; padding: 0; 
-      background: var(--bg-primary); 
+      background: radial-gradient(circle at top left, rgba(59, 130, 246, 0.14), transparent 25%),
+                  radial-gradient(circle at bottom right, rgba(14, 165, 233, 0.10), transparent 20%),
+                  var(--bg-primary); 
       color: var(--text-primary);
       transition: background var(--transition-normal), color var(--transition-normal);
       min-height: 100vh;
     }
 
     /* Premium Header */
-    header { 
+    header {
       background: linear-gradient(135deg, var(--accent-primary) 0%, #1e3a8a 100%); 
       color: white; 
-      padding: 24px 32px; 
+      padding: 28px 32px; 
       position: relative;
       overflow: hidden;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     }
     header::before {
       content: '';
@@ -460,11 +487,16 @@ TEMPLATE_BASE = """
       color: white;
     }
 
+    .theme-toggle {
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
+    }
+
     /* Container */
     .container { 
       max-width: 1200px; 
       margin: 32px auto; 
       padding: 0 24px; 
+      min-height: calc(100vh - 160px);
     }
 
     /* Premium Card */
@@ -504,59 +536,121 @@ TEMPLATE_BASE = """
     /* Summary Cards */
     .summary-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-      gap: 20px;
-      margin-bottom: 24px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+      margin-bottom: 28px;
     }
 
     .summary-card {
       background: var(--bg-card);
-      border-radius: 16px;
-      padding: 24px;
-      border: 1px solid var(--border-color);
-      box-shadow: var(--shadow-sm);
-      transition: all var(--transition-normal);
+      border-radius: 20px;
+      padding: 28px 26px;
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      box-shadow: 0 14px 36px rgba(15, 23, 42, 0.08);
+      transition: transform var(--transition-normal), box-shadow var(--transition-normal), border-color var(--transition-normal);
       position: relative;
       overflow: hidden;
+      min-height: 180px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
     }
 
     .summary-card::after {
       content: '';
       position: absolute;
-      top: 0;
-      right: 0;
-      width: 100px;
-      height: 100px;
-      background: radial-gradient(circle at top right, var(--accent-glow), transparent 70%);
+      top: -14px;
+      right: -14px;
+      width: 120px;
+      height: 120px;
+      background: radial-gradient(circle at top right, var(--accent-glow), transparent 72%);
+      pointer-events: none;
     }
 
     .summary-card:hover {
-      transform: translateY(-6px) scale(1.02);
+      transform: translateY(-8px);
       box-shadow: var(--shadow-lg);
+      border-color: rgba(59, 130, 246, 0.4);
+    }
+
+    .summary-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(59,130,246,0.02), transparent 65%);
+      pointer-events: none;
+      border-radius: 20px;
     }
 
     .summary-card strong {
       display: block;
-      font-size: 0.85rem;
+      font-size: 0.78rem;
       color: var(--text-secondary);
       text-transform: uppercase;
-      letter-spacing: 0.05em;
-      margin-bottom: 8px;
+      letter-spacing: 0.08em;
+      margin-bottom: 10px;
     }
 
     .summary-card p {
-      font-size: 2rem;
-      font-weight: 700;
+      font-size: 2.3rem;
+      font-weight: 800;
       color: var(--text-primary);
       margin: 0;
-      line-height: 1.2;
+      line-height: 1.05;
     }
 
     .summary-card small {
       display: block;
-      margin-top: 8px;
-      font-size: 0.85rem;
+      margin-top: 14px;
+      font-size: 0.89rem;
       color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    .card-grid {
+      display: grid;
+      grid-template-columns: 1.6fr 1fr;
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+
+    .card-grid .card {
+      margin-bottom: 0;
+    }
+
+    .report-export-section {
+      display: flex;
+      justify-content: center;
+      margin: 32px auto 28px;
+      width: 100%;
+    }
+
+    .report-export-card {
+      width: min(100%, 720px);
+      margin-bottom: 0;
+      text-align: left;
+    }
+
+    .report-export-card h3,
+    .report-export-card > p {
+      text-align: center;
+    }
+
+    .report-export-form {
+      max-width: 560px;
+      margin: 24px auto 0;
+    }
+
+    .report-export-form .button {
+      display: flex;
+      justify-content: center;
+      width: 100%;
+    }
+
+    .dashboard-actions {
+      display: flex;
+      justify-content: center;
+      margin-top: 8px;
     }
 
     /* Badge Styles */
@@ -579,10 +673,10 @@ TEMPLATE_BASE = """
       align-items: center;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: white;
-      padding: 16px 24px;
-      border-radius: 12px;
+      padding: 18px 24px;
+      border-radius: 16px;
       margin-bottom: 24px;
-      box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+      box-shadow: 0 10px 40px rgba(102, 126, 234, 0.18);
     }
 
     .user-info {
@@ -816,14 +910,20 @@ TEMPLATE_BASE = """
 
     .button:hover {
       transform: translateY(-2px);
-      box-shadow: 0 8px 20px var(--accent-glow);
+      box-shadow: 0 10px 25px rgba(11, 42, 95, 0.16);
       text-decoration: none;
     }
 
+    .button:focus-visible {
+      outline: 2px solid rgba(59, 130, 246, 0.6);
+      outline-offset: 2px;
+    }
+
     .button-secondary { 
-      background: var(--bg-card-hover); 
+      background: rgba(255,255,255,0.85);
       color: var(--text-primary);
       border: 1px solid var(--border-color);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.5);
     }
 
     .button-secondary:hover {
@@ -835,9 +935,27 @@ TEMPLATE_BASE = """
     /* Navigation */
     .nav-buttons {
       display: flex;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       gap: 12px;
       margin-bottom: 24px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(59,130,246,0.4) transparent;
+    }
+
+    .nav-buttons::-webkit-scrollbar {
+      height: 8px;
+    }
+    .nav-buttons::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .nav-buttons::-webkit-scrollbar-thumb {
+      background: rgba(59,130,246,0.35);
+      border-radius: 999px;
+    }
+    .nav-buttons a {
+      flex: 0 0 auto;
     }
 
     /* Form Elements */
@@ -871,10 +989,11 @@ TEMPLATE_BASE = """
     .alert { 
       padding: 16px 20px; 
       background: var(--badge-medium); 
-      border-radius: 12px; 
+      border-radius: 14px; 
       margin-bottom: 24px; 
       color: var(--badge-medium-text);
-      border: 1px solid transparent;
+      border: 1px solid rgba(249, 205, 116, 0.35);
+      box-shadow: 0 8px 24px rgba(249, 205, 116, 0.08);
       transition: all var(--transition-normal);
     }
 
@@ -1003,16 +1122,18 @@ TEMPLATE_BASE = """
     <a class="button" href="{{ url_for('index') }}">🏠 公告中心</a>
     <a class="button button-secondary" href="{{ url_for('resources') }}">📚 資源庫</a>
     <a class="button button-secondary" href="{{ url_for('issues') }}">🔧 Issue Tracker</a>
-    <a class="button button-secondary" href="{{ url_for('controls') }}">⚙️ 控制點矩陣</a>
     <a class="button button-secondary" href="{{ url_for('dashboard') }}">📊 儀表板</a>
-    {% if session.get('user_role') == 'audit_manager' or session.get('user_role') == 'system_admin' %}
-    <a class="button button-secondary" href="{{ url_for('manage_resources') }}">🔧 資源維護</a>
-    <a class="button button-secondary" href="{{ url_for('manage_controls') }}">⚙️ 控制點維護</a>
+    <a class="button button-secondary" href="{{ url_for('controls') }}">控制點矩陣</a>
+    {% if session.get('user_role') in ['audit_manager', 'system_admin', 'control_owner'] %}
+    <a class="button button-secondary" href="{{ safe_url_for('manage_controls') }}">⚙️ 控制點維護</a>
+    {% endif %}
+    {% if session.get('user_role') in ['audit_manager', 'system_admin'] %}
+    <a class="button button-secondary" href="{{ safe_url_for('manage_resources') }}">🔧 資源維護</a>
     {% endif %}
     {% if session.get('user_role') == 'system_admin' %}
-    <a class="button button-secondary" href="{{ url_for('audit_logs') }}">📋 稽核日誌</a>
-    <a class="button button-secondary" href="{{ url_for('manage_users') }}">👥 用戶管理</a>
-    <a class="button button-secondary" href="{{ url_for('manage_announcements') }}">📣 公告維護</a>
+    <a class="button button-secondary" href="{{ safe_url_for('audit_logs') }}">📋 稽核日誌</a>
+    <a class="button button-secondary" href="{{ safe_url_for('manage_users') }}">👥 用戶管理</a>
+    <a class="button button-secondary" href="{{ safe_url_for('manage_announcements') }}">📣 公告維護</a>
     {% endif %}
   </div>
   {% for message in get_flashed_messages() %}
@@ -1123,7 +1244,7 @@ def login():
         </form>
 
         <div class="forgot-password">
-          <a href="{url_for('forgot_password')}">忘記密碼？</a>
+          <a href="{safe_url_for('forgot_password')}">忘記密碼？</a>
         </div>
 
         <div class="login-info">
@@ -1142,35 +1263,54 @@ def login():
       display: flex;
       justify-content: center;
       align-items: center;
-      min-height: 80vh;
+      min-height: 84vh;
       padding: 20px;
+      background: radial-gradient(circle at top left, rgba(52, 152, 219, 0.16), transparent 24%),
+                  radial-gradient(circle at bottom right, rgba(46, 204, 113, 0.10), transparent 18%);
     }}
 
     .login-card {{
-      background: white;
-      border-radius: 12px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.1);
-      padding: 40px;
+      position: relative;
+      background: linear-gradient(180deg, #ffffff 0%, #eef7ff 100%);
+      border-radius: 24px;
+      box-shadow: 0 24px 60px rgba(15, 64, 107, 0.12);
+      padding: 44px 36px;
       width: 100%;
-      max-width: 450px;
+      max-width: 520px;
+      border: 1px solid rgba(52, 152, 219, 0.14);
+      overflow: hidden;
+    }}
+
+    .login-card::before {{
+      content: '';
+      position: absolute;
+      top: -40px;
+      right: -40px;
+      width: 150px;
+      height: 150px;
+      background: rgba(52, 152, 219, 0.12);
+      border-radius: 50%;
+      filter: blur(20px);
     }}
 
     .login-card h1 {{
       text-align: center;
-      color: #2c3e50;
+      color: #1f3a60;
       margin-bottom: 10px;
-      font-size: 24px;
+      font-size: 26px;
+      letter-spacing: -0.02em;
     }}
 
     .login-card h2 {{
       text-align: center;
-      color: #7f8c8d;
-      margin-bottom: 30px;
+      color: #506b8a;
+      margin-bottom: 32px;
       font-size: 18px;
+      font-weight: 500;
     }}
 
     .login-form {{
-      margin-bottom: 30px;
+      margin-bottom: 32px;
     }}
 
     .form-group {{
@@ -1179,67 +1319,80 @@ def login():
 
     .form-group label {{
       display: block;
-      margin-bottom: 5px;
-      font-weight: 600;
-      color: #2c3e50;
+      margin-bottom: 8px;
+      font-weight: 700;
+      color: #1f3a60;
     }}
 
     .form-group input,
     .form-group select {{
       width: 100%;
-      padding: 12px;
-      border: 2px solid #e1e8ed;
-      border-radius: 6px;
-      font-size: 16px;
-      transition: border-color 0.3s;
+      padding: 14px 16px;
+      border: 1px solid rgba(144, 164, 174, 0.28);
+      border-radius: 12px;
+      font-size: 15px;
+      color: #1f3a60;
+      background: #fbfdff;
+      box-shadow: inset 0 1px 2px rgba(255,255,255,0.8);
+      transition: border-color 0.25s, box-shadow 0.25s;
     }}
 
     .form-group input:focus,
     .form-group select:focus {{
       outline: none;
-      border-color: #3498db;
+      border-color: #3d95d7;
+      box-shadow: 0 0 0 4px rgba(52, 152, 219, 0.12);
     }}
 
     .login-btn {{
       width: 100%;
       padding: 14px;
-      background: linear-gradient(135deg, #3498db, #2980b9);
+      background: linear-gradient(135deg, #2d8ce9, #1768c9);
       color: white;
       border: none;
-      border-radius: 6px;
+      border-radius: 12px;
       font-size: 16px;
-      font-weight: 600;
+      font-weight: 700;
       cursor: pointer;
-      transition: transform 0.2s;
+      transition: transform 0.25s ease, box-shadow 0.25s ease;
     }}
 
     .login-btn:hover {{
       transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+      box-shadow: 0 10px 24px rgba(23, 104, 201, 0.24);
     }}
 
     .forgot-password {{
       text-align: center;
-      margin: 20px 0;
+      margin: 22px 0;
     }}
 
     .forgot-password a {{
-      color: #3498db;
+      color: #1768c9;
       text-decoration: none;
       font-size: 14px;
-      transition: color 0.3s;
+      font-weight: 600;
+      transition: color 0.25s;
     }}
 
     .forgot-password a:hover {{
-      color: #2980b9;
+      color: #0f4ea7;
       text-decoration: underline;
     }}
 
     .login-info {{
-      background: #f8f9fa;
-      padding: 20px;
-      border-radius: 6px;
-      border-left: 4px solid #3498db;
+      background: #f0f7ff;
+      padding: 22px;
+      border-radius: 16px;
+      border-left: 4px solid #3d95d7;
+      color: #3b4b66;
+      line-height: 1.7;
+    }}
+
+    .login-info p {{
+      margin-bottom: 12px;
+      font-weight: 700;
+      color: #1f3a60;
     }}
 
     .login-info ul {{
@@ -1248,8 +1401,8 @@ def login():
     }}
 
     .login-info li {{
-      margin-bottom: 8px;
-      color: #555;
+      margin-bottom: 10px;
+      color: #4f667a;
     }}
     </style>
     """
@@ -1315,7 +1468,7 @@ def forgot_password():
         </form>
 
         <div class="forgot-password">
-          <a href="{url_for('login')}">回到登入頁面</a>
+          <a href="{safe_url_for('login')}">回到登入頁面</a>
         </div>
 
         <div class="login-info">
@@ -1334,35 +1487,54 @@ def forgot_password():
       display: flex;
       justify-content: center;
       align-items: center;
-      min-height: 80vh;
+      min-height: 84vh;
       padding: 20px;
+      background: radial-gradient(circle at top left, rgba(52, 152, 219, 0.16), transparent 24%),
+                  radial-gradient(circle at bottom right, rgba(46, 204, 113, 0.10), transparent 18%);
     }}
 
     .login-card {{
-      background: white;
-      border-radius: 12px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.1);
-      padding: 40px;
+      position: relative;
+      background: linear-gradient(180deg, #ffffff 0%, #eef7ff 100%);
+      border-radius: 24px;
+      box-shadow: 0 24px 60px rgba(15, 64, 107, 0.12);
+      padding: 44px 36px;
       width: 100%;
-      max-width: 450px;
+      max-width: 520px;
+      border: 1px solid rgba(52, 152, 219, 0.14);
+      overflow: hidden;
+    }}
+
+    .login-card::before {{
+      content: '';
+      position: absolute;
+      top: -40px;
+      right: -40px;
+      width: 150px;
+      height: 150px;
+      background: rgba(52, 152, 219, 0.12);
+      border-radius: 50%;
+      filter: blur(20px);
     }}
 
     .login-card h1 {{
       text-align: center;
-      color: #2c3e50;
+      color: #1f3a60;
       margin-bottom: 10px;
-      font-size: 24px;
+      font-size: 26px;
+      letter-spacing: -0.02em;
     }}
 
     .login-card h2 {{
       text-align: center;
-      color: #7f8c8d;
-      margin-bottom: 30px;
+      color: #506b8a;
+      margin-bottom: 32px;
       font-size: 18px;
+      font-weight: 500;
     }}
 
     .login-form {{
-      margin-bottom: 30px;
+      margin-bottom: 32px;
     }}
 
     .form-group {{
@@ -1371,67 +1543,80 @@ def forgot_password():
 
     .form-group label {{
       display: block;
-      margin-bottom: 5px;
-      font-weight: 600;
-      color: #2c3e50;
+      margin-bottom: 8px;
+      font-weight: 700;
+      color: #1f3a60;
     }}
 
     .form-group input,
     .form-group select {{
       width: 100%;
-      padding: 12px;
-      border: 2px solid #e1e8ed;
-      border-radius: 6px;
-      font-size: 16px;
-      transition: border-color 0.3s;
+      padding: 14px 16px;
+      border: 1px solid rgba(144, 164, 174, 0.28);
+      border-radius: 12px;
+      font-size: 15px;
+      color: #1f3a60;
+      background: #fbfdff;
+      box-shadow: inset 0 1px 2px rgba(255,255,255,0.8);
+      transition: border-color 0.25s, box-shadow 0.25s;
     }}
 
     .form-group input:focus,
     .form-group select:focus {{
       outline: none;
-      border-color: #3498db;
+      border-color: #3d95d7;
+      box-shadow: 0 0 0 4px rgba(52, 152, 219, 0.12);
     }}
 
     .login-btn {{
       width: 100%;
       padding: 14px;
-      background: linear-gradient(135deg, #3498db, #2980b9);
+      background: linear-gradient(135deg, #2d8ce9, #1768c9);
       color: white;
       border: none;
-      border-radius: 6px;
+      border-radius: 12px;
       font-size: 16px;
-      font-weight: 600;
+      font-weight: 700;
       cursor: pointer;
-      transition: transform 0.2s;
+      transition: transform 0.25s ease, box-shadow 0.25s ease;
     }}
 
     .login-btn:hover {{
       transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+      box-shadow: 0 10px 24px rgba(23, 104, 201, 0.24);
     }}
 
     .forgot-password {{
       text-align: center;
-      margin: 20px 0;
+      margin: 22px 0;
     }}
 
     .forgot-password a {{
-      color: #3498db;
+      color: #1768c9;
       text-decoration: none;
       font-size: 14px;
-      transition: color 0.3s;
+      font-weight: 600;
+      transition: color 0.25s;
     }}
 
     .forgot-password a:hover {{
-      color: #2980b9;
+      color: #0f4ea7;
       text-decoration: underline;
     }}
 
     .login-info {{
-      background: #f8f9fa;
-      padding: 20px;
-      border-radius: 6px;
-      border-left: 4px solid #3498db;
+      background: #f0f7ff;
+      padding: 22px;
+      border-radius: 16px;
+      border-left: 4px solid #3d95d7;
+      color: #3b4b66;
+      line-height: 1.7;
+    }}
+
+    .login-info p {{
+      margin-bottom: 12px;
+      font-weight: 700;
+      color: #1f3a60;
     }}
 
     .login-info ul {{
@@ -1440,8 +1625,8 @@ def forgot_password():
     }}
 
     .login-info li {{
-      margin-bottom: 8px;
-      color: #555;
+      margin-bottom: 10px;
+      color: #4f667a;
     }}
     </style>
     """
@@ -1732,12 +1917,13 @@ def manage_users():
         role = request.form.get("role", Role.PROCESS_OWNER)
         full_name = request.form.get("full_name", "").strip()
         email = request.form.get("email", "").strip()
+        department = request.form.get("department", "").strip()
 
         if not username or not password or not role:
             flash("請填寫用戶名、密碼與角色。", "error")
         else:
             try:
-                user_manager.create_user(username, password, role, full_name, email)
+                user_manager.create_user(username, password, role, full_name, email, department)
                 audit_log_manager.add_log(
                     session.get("username", "system"),
                     "建立用戶",
@@ -1767,13 +1953,14 @@ def manage_users():
     body += "</select></div>"
     body += "<div class=\"form-group\"><label for=\"full_name\">姓名</label><input type=\"text\" id=\"full_name\" name=\"full_name\" placeholder=\"完整姓名\"/></div>"
     body += "<div class=\"form-group\"><label for=\"email\">Email</label><input type=\"email\" id=\"email\" name=\"email\" placeholder=\"電子郵件\"/></div>"
+    body += "<div class=\"form-group\"><label for=\"department\">部門</label><input type=\"text\" id=\"department\" name=\"department\" placeholder=\"所屬部門\"/></div>"
     body += "<div class=\"form-actions\"><button class=\"button button-primary\" type=\"submit\">建立用戶</button></div>"
     body += "</form></div>"
-    body += "<div class=\"card\"><h3>用戶清單</h3><table class=\"table\"><thead><tr><th>ID</th><th>用戶名</th><th>角色</th><th>姓名</th><th>Email</th><th>狀態</th><th>操作</th></tr></thead><tbody>"
+    body += "<div class=\"card\"><h3>用戶清單</h3><table class=\"table\"><thead><tr><th>ID</th><th>用戶名</th><th>角色</th><th>姓名</th><th>部門</th><th>Email</th><th>狀態</th><th>操作</th></tr></thead><tbody>"
     for user in users:
         action_label = "停用" if user.is_active() else "啟用"
         action_class = "button button-secondary" if user.is_active() else "button button-primary"
-        body += f"<tr><td>{user.id}</td><td>{user.username}</td><td>{ROLE_LABELS.get(user.role, user.role)}</td><td>{user.full_name}</td><td>{user.email}</td><td>{user.status}</td><td class=\"action-buttons\">"
+        body += f"<tr><td>{user.id}</td><td>{user.username}</td><td>{ROLE_LABELS.get(user.role, user.role)}</td><td>{user.full_name}</td><td>{user.department}</td><td>{user.email}</td><td>{user.status}</td><td class=\"action-buttons\">"
         body += f"<a class=\"button button-secondary\" href=\"{url_for('edit_user', user_id=user.id)}\">編輯</a> "
         if user.username != session.get("username"):
             body += f"<form method=\"post\" action=\"{url_for('toggle_user_status', user_id=user.id)}\" style=\"display:inline;\"><button class=\"{action_class}\" type=\"submit\">{action_label}</button></form>"
@@ -1972,6 +2159,7 @@ def edit_user(user_id):
     if request.method == "POST":
         full_name = request.form.get("full_name", "").strip()
         email = request.form.get("email", "").strip()
+        department = request.form.get("department", "").strip()
         role = request.form.get("role", user.role)
         status = request.form.get("status", user.status)
 
@@ -1979,7 +2167,7 @@ def edit_user(user_id):
             flash("無法停用目前登入帳號。", "error")
             return redirect(url_for("edit_user", user_id=user_id))
 
-        user_manager.update_user(user_id, full_name=full_name, email=email, role=role, status=status)
+        user_manager.update_user(user_id, full_name=full_name, email=email, department=department, role=role, status=status)
         audit_log_manager.add_log(
             session.get("username", "system"),
             "更新用戶",
@@ -1996,6 +2184,7 @@ def edit_user(user_id):
     body += f"<div class=\"form-group\"><label for=\"username\">用戶名</label><input type=\"text\" id=\"username\" name=\"username\" value=\"{user.username}\" disabled/></div>"
     body += f"<div class=\"form-group\"><label for=\"full_name\">姓名</label><input type=\"text\" id=\"full_name\" name=\"full_name\" value=\"{user.full_name}\"/></div>"
     body += f"<div class=\"form-group\"><label for=\"email\">Email</label><input type=\"email\" id=\"email\" name=\"email\" value=\"{user.email}\"/></div>"
+    body += f"<div class=\"form-group\"><label for=\"department\">部門</label><input type=\"text\" id=\"department\" name=\"department\" value=\"{user.department}\"/></div>"
     body += f"<div class=\"form-group\"><label for=\"role\">角色</label><select id=\"role\" name=\"role\" required>"
     for role_key, role_label in ROLE_LABELS.items():
         selected = "selected" if user.role == role_key else ""
@@ -2269,8 +2458,10 @@ def dashboard():
         status_class = "badge-low" if coverage >= 80 else ("badge-medium" if coverage >= 50 else "badge-high")
         body += f"<tr><td>{process}</td><td>{coverage}%</td><td><span class=\"badge {status_class}\">{'良好' if coverage >= 80 else ('普通' if coverage >= 50 else '不足')}</span></td></tr>"
     body += """</tbody></table></div>
+    </div>
     
-    <div class="card">
+    <div class="card-grid">
+      <div class="card">
       <h3>報表匯出 (RPT-12 ~ RPT-17)</h3>
       <p>選擇報表類型並填寫匯出用途：</p>
       <form method="post" action="/export_report">
@@ -2290,6 +2481,7 @@ def dashboard():
         <button class="button" type="submit">匯出報表</button>
       </form>
     </div>
+  </div>
     
     <a class="button button-secondary" href="/">回到公告中心</a>
 """
@@ -2992,6 +3184,7 @@ def control_detail(control_id):
 
 
 @app.route("/controls/<control_id>/transition", methods=["POST"])
+@require_login()
 def transition_control_test(control_id):
     """控制測試狀態轉換"""
     if not has_permission("can_record_test_result"):
@@ -3005,7 +3198,7 @@ def transition_control_test(control_id):
     
     new_status = request.form.get("new_status", "")
     if new_status and ctrl.can_transition_to(new_status):
-        ctrl.test_status = new_status
+        control_manager.update_control(control_id, test_status=new_status)
         audit_log_manager.add_log(
             get_current_role(),
             "測試狀態轉換",
@@ -3304,4 +3497,4 @@ def import_controls_excel():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=False, port=5000)

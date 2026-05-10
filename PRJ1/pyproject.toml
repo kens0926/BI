@@ -1,0 +1,15 @@
+[project]
+name = "prj1"
+version = "0.1.0"
+description = "PRJ1 web application"
+dependencies = [
+    "flask>=2.0",
+    "openpyxl>=3.1",
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = []

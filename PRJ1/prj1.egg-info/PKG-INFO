@@ -1,0 +1,6 @@
+Metadata-Version: 2.4
+Name: prj1
+Version: 0.1.0
+Summary: PRJ1 web application
+Requires-Dist: flask>=2.0
+Requires-Dist: openpyxl>=3.1

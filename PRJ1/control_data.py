@@ -331,6 +331,7 @@ class ControlManager:
         owner_dept: str = None,
         owner_user: str = None,
         status: str = None,
+        test_status: str = None,
     ) -> Optional[ControlPoint]:
         """更新控制點"""
         control = self._controls.get(control_id)
@@ -357,6 +358,8 @@ class ControlManager:
             fields["owner_user"] = owner_user
         if status is not None:
             fields["status"] = status
+        if test_status is not None:
+            fields["test_status"] = test_status
         
         if fields:
             fields["updated_at"] = datetime.now().strftime("%Y-%m-%d")
@@ -372,17 +375,26 @@ class ControlManager:
         
         self._load_controls()
         return self._controls.get(control_id)
-        
-        control.updated_at = datetime.now().strftime("%Y-%m-%d")
-        return control
 
     def delete_control(self, control_id: str) -> bool:
         """停用控制點 (軟刪除)"""
         control = self._controls.get(control_id)
         if not control:
             return False
+
+        now = datetime.now().strftime("%Y-%m-%d")
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE controls SET status = ?, updated_at = ? WHERE id = ?",
+            ("停用", now, control_id)
+        )
+        conn.commit()
+        conn.close()
+
+        # 同步記憶體狀態
         control.status = "停用"
-        control.updated_at = datetime.now().strftime("%Y-%m-%d")
+        control.updated_at = now
         return True
 
     # ===== 測試記錄操作 =====

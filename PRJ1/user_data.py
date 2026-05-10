@@ -17,6 +17,7 @@ class User:
     role: str
     full_name: str = ""
     email: str = ""
+    department: str = ""  # 部門
     status: str = "Active"  # Active / Inactive / Suspended
     force_password_change: bool = False  # 是否強制修改密碼
     created_at: str = ""
@@ -52,6 +53,7 @@ class UserManager:
                 role TEXT NOT NULL,
                 full_name TEXT,
                 email TEXT,
+                department TEXT,
                 status TEXT DEFAULT 'Active',
                 created_at TEXT,
                 updated_at TEXT
@@ -65,6 +67,9 @@ class UserManager:
         
         if 'force_password_change' not in column_names:
             cursor.execute("ALTER TABLE users ADD COLUMN force_password_change INTEGER DEFAULT 0")
+        
+        if 'department' not in column_names:
+            cursor.execute("ALTER TABLE users ADD COLUMN department TEXT DEFAULT ''")
         
         conn.commit()
         conn.close()
@@ -118,6 +123,7 @@ class UserManager:
             role=row["role"],
             full_name=row["full_name"] or "",
             email=row["email"] or "",
+            department=row["department"] or "",
             status=row["status"] or "Active",
             force_password_change=bool(row["force_password_change"]) if "force_password_change" in row.keys() else False,
             created_at=row["created_at"] or "",
@@ -160,6 +166,7 @@ class UserManager:
         role: str,
         full_name: str = "",
         email: str = "",
+        department: str = "",
     ) -> Optional[User]:
         """建立新用戶"""
         # 檢查用戶名是否已存在
@@ -173,9 +180,9 @@ class UserManager:
         cursor = conn.cursor()
         
         cursor.execute("""
-            INSERT INTO users (username, password, role, full_name, email, status, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, 'Active', ?, ?)
-        """, (username, hashed_pwd, role, full_name, email, now, now))
+            INSERT INTO users (username, password, role, full_name, email, department, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'Active', ?, ?)
+        """, (username, hashed_pwd, role, full_name, email, department, now, now))
         
         user_id = cursor.lastrowid
         conn.commit()
@@ -189,6 +196,7 @@ class UserManager:
         user_id: int,
         full_name: str = None,
         email: str = None,
+        department: str = None,
         role: str = None,
         status: str = None,
     ) -> Optional[User]:
@@ -202,6 +210,8 @@ class UserManager:
             fields["full_name"] = full_name
         if email is not None:
             fields["email"] = email
+        if department is not None:
+            fields["department"] = department
         if role is not None:
             fields["role"] = role
         if status is not None:
