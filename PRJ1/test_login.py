@@ -1,163 +1,146 @@
 #!/usr/bin/env python3
+"""Authentication and authorization smoke tests for PRJ1.
+
+The tests use Flask's in-process test client and a temporary copy of the
+SQLite database, so they do not require a running development server and do
+not write audit logs into the real application database.
 """
-登入功能測試腳本
-測試完整的登入、訪問受保護頁面、登出流程
-"""
 
-import requests
-import sys
+import os
+import shutil
+import tempfile
+import unittest
 
-BASE_URL = "http://127.0.0.1:5000"
 
-def test_login_flow():
-    """測試登入流程"""
-    print("🔐 測試登入功能...")
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+SOURCE_DB = os.path.join(ROOT_DIR, "icp_system.db")
 
-    # 建立 session 來保持 cookies
-    session = requests.Session()
 
-    # 1. 測試未登入時訪問主頁面
-    print("1. 測試未登入時訪問主頁面...")
-    response = session.get(f"{BASE_URL}/")
-    if response.status_code == 302 and 'login' in response.headers.get('Location', ''):
-        print("✅ 正確重定向到登入頁面")
-    else:
-        print("❌ 未正確重定向")
-        return False
+class LoginFlowTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.temp_dir = tempfile.mkdtemp(prefix="prj1-tests-")
+        cls.test_db = os.path.join(cls.temp_dir, "icp_system.db")
+        shutil.copy2(SOURCE_DB, cls.test_db)
 
-    # 2. 測試登入頁面載入
-    print("2. 測試登入頁面載入...")
-    response = session.get(f"{BASE_URL}/login")
-    if response.status_code == 200:
-        print("✅ 登入頁面正常載入")
-    else:
-        print("❌ 登入頁面載入失敗")
-        return False
+        import database
 
-    # 3. 測試登入
-    print("3. 測試登入...")
-    login_data = {
-        'username': 'testuser',
-        'password': 'testpass',
-        'role': 'process_owner'
-    }
-    response = session.post(f"{BASE_URL}/login", data=login_data, allow_redirects=False)
+        database.DB_PATH = cls.test_db
 
-    if response.status_code == 302 and response.headers.get('Location') == '/':
-        print("✅ 登入成功，重定向到主頁面")
-    else:
-        print("❌ 登入失敗")
-        return False
+        import app as app_module
 
-    # 4. 測試登入後訪問主頁面
-    print("4. 測試登入後訪問主頁面...")
-    response = session.get(f"{BASE_URL}/")
-    if response.status_code == 200 and '歡迎，testuser！' in response.text:
-        print("✅ 主頁面正常顯示用戶資訊")
-    else:
-        print("❌ 主頁面未正確顯示")
-        return False
+        cls.app_module = app_module
+        cls.app = app_module.app
+        cls.app.config.update(TESTING=True)
 
-    # 5. 測試訪問受保護的頁面
-    print("5. 測試訪問受保護的頁面...")
-    protected_pages = ['/dashboard', '/controls', '/issues', '/resources', '/audit_logs']
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.temp_dir, ignore_errors=True)
 
-    for page in protected_pages:
-        response = session.get(f"{BASE_URL}{page}")
-        if response.status_code == 200:
-            print(f"✅ {page} 頁面可正常訪問")
-        else:
-            print(f"❌ {page} 頁面訪問失敗")
-            return False
+    def setUp(self):
+        self.client = self.app.test_client()
 
-    # 6. 測試登出
-    print("6. 測試登出...")
-    response = session.get(f"{BASE_URL}/logout", allow_redirects=False)
-    if response.status_code == 302 and response.headers.get('Location') == '/login':
-        print("✅ 登出成功，重定向到登入頁面")
-    else:
-        print("❌ 登出失敗")
-        return False
+    def login(self, username="admin", password="admin123"):
+        return self.client.post(
+            "/login",
+            data={"username": username, "password": password},
+            follow_redirects=False,
+        )
 
-    # 7. 測試登出後訪問受保護頁面
-    print("7. 測試登出後訪問受保護頁面...")
-    response = session.get(f"{BASE_URL}/dashboard")
-    if response.status_code == 302 and 'login' in response.headers.get('Location', ''):
-        print("✅ 登出後正確重定向到登入頁面")
-    else:
-        print("❌ 登出後仍可訪問受保護頁面")
-        return False
+    def test_unauthenticated_users_are_redirected_to_login(self):
+        protected_pages = [
+            "/",
+            "/dashboard",
+            "/controls",
+            "/issues",
+            "/resources",
+            "/audit_logs",
+            "/users",
+            "/announcements/manage",
+            "/controls/manage",
+        ]
 
-    print("\n🎉 所有登入功能測試通過！")
-    return True
+        for page in protected_pages:
+            with self.subTest(page=page):
+                response = self.client.get(page, follow_redirects=False)
+                self.assertEqual(response.status_code, 302)
+                self.assertEqual(response.headers["Location"], "/login")
 
-def test_role_based_access():
-    """測試基於角色的權限訪問"""
-    print("\n👥 測試基於角色的權限訪問...")
+    def test_admin_can_login_access_core_pages_and_logout(self):
+        response = self.login()
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], "/")
 
-    roles_to_test = [
-        ('system_admin', '系統管理員'),
-        ('audit_manager', '稽核主管'),
-        ('control_owner', '控制點負責人'),
-        ('tester', '測試人員'),
-        ('process_owner', '改善負責人'),
-        ('approver', '核准者'),
-        ('reviewer', '審閱者')
-    ]
+        pages = [
+            "/",
+            "/dashboard",
+            "/controls",
+            "/issues",
+            "/resources",
+            "/audit_logs",
+            "/users",
+            "/announcements/manage",
+            "/controls/manage",
+        ]
 
-    for role_code, role_name in roles_to_test:
-        print(f"\n測試角色: {role_name} ({role_code})")
+        for page in pages:
+            with self.subTest(page=page):
+                response = self.client.get(page, follow_redirects=False)
+                self.assertEqual(response.status_code, 200)
 
-        session = requests.Session()
+        response = self.client.get("/logout", follow_redirects=False)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], "/login")
 
-        # 登入
-        login_data = {
-            'username': f'test_{role_code}',
-            'password': 'testpass',
-            'role': role_code
-        }
-        response = session.post(f"{BASE_URL}/login", data=login_data)
-        if response.status_code != 200 and '歡迎' not in response.text:
-            print(f"❌ {role_name} 登入失敗")
-            continue
+        response = self.client.get("/dashboard", follow_redirects=False)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], "/login")
 
-        # 檢查角色顯示
-        if role_name in response.text:
-            print(f"✅ {role_name} 角色正確顯示")
-        else:
-            print(f"❌ {role_name} 角色顯示錯誤")
+    def test_invalid_login_does_not_create_session(self):
+        response = self.login("admin", "wrong-password")
+        self.assertEqual(response.status_code, 200)
 
-        # 測試儀表板訪問權限
-        dashboard_response = session.get(f"{BASE_URL}/dashboard")
-        if role_code in ['system_admin', 'audit_manager', 'control_owner', 'tester', 'process_owner', 'approver', 'reviewer']:
-            if dashboard_response.status_code == 200:
-                print(f"✅ {role_name} 可訪問儀表板")
-            else:
-                print(f"❌ {role_name} 無法訪問儀表板")
-        else:
-            print(f"ℹ️ {role_name} 角色權限檢查")
+        response = self.client.get("/dashboard", follow_redirects=False)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], "/login")
 
-    print("\n🎉 角色權限測試完成！")
+    def test_role_permissions_for_management_pages(self):
+        test_users = [
+            ("test_audit_manager", "audit_manager", True, True, True),
+            ("test_control_owner", "control_owner", False, False, True),
+            ("test_tester", "tester", False, False, False),
+            ("test_process_owner", "process_owner", False, False, False),
+            ("test_approver", "approver", False, False, False),
+            ("test_reviewer", "reviewer", False, False, False),
+        ]
+
+        for username, role, can_manage_users, can_manage_resources, can_manage_controls in test_users:
+            with self.subTest(role=role):
+                self.app_module.user_manager.create_user(
+                    username=username,
+                    password="testpass",
+                    role=role,
+                    full_name=username,
+                )
+
+                client = self.app.test_client()
+                login_response = client.post(
+                    "/login",
+                    data={"username": username, "password": "testpass"},
+                    follow_redirects=False,
+                )
+                self.assertEqual(login_response.status_code, 302)
+                self.assertEqual(login_response.headers["Location"], "/")
+
+                users_response = client.get("/users", follow_redirects=False)
+                self.assertEqual(users_response.status_code, 200 if can_manage_users else 302)
+
+                resources_response = client.get("/resources/manage", follow_redirects=False)
+                self.assertEqual(resources_response.status_code, 200 if can_manage_resources else 302)
+
+                controls_response = client.get("/controls/manage", follow_redirects=False)
+                self.assertEqual(controls_response.status_code, 200 if can_manage_controls else 302)
+
 
 if __name__ == "__main__":
-    print("🚀 內控治理入口網站登入功能測試")
-    print("=" * 50)
-
-    try:
-        # 測試基本登入流程
-        if test_login_flow():
-            # 測試角色權限
-            test_role_based_access()
-        else:
-            print("❌ 基本登入測試失敗")
-            sys.exit(1)
-
-    except requests.exceptions.ConnectionError:
-        print("❌ 無法連接到伺服器，請確保 Flask 應用程式正在運行")
-        print("   執行: cd /Users/chienyuancheng/Project/PRJ1 && source .venv/bin/activate && python app.py")
-        sys.exit(1)
-    except Exception as e:
-        print(f"❌ 測試過程中發生錯誤: {e}")
-        sys.exit(1)
-
-    print("\n✅ 所有測試完成！登入系統運行正常。")
+    unittest.main(verbosity=2)

@@ -1,6 +1,8 @@
 from flask import Flask, render_template_string, redirect, url_for, session, request, flash, jsonify, send_file
 from werkzeug.routing import BuildError
 from datetime import datetime
+import os
+import secrets
 from announcement_data import announcement_manager, PUBLISH_STATUS, ANNOUNCEMENT_CATEGORIES, IMPORTANCE_LEVELS
 from issue_data import issue_manager, WORKFLOW_STATES, EXTENSION_STATES, PRIORITY_LABELS, ISSUE_TYPES, ROOT_CAUSE_TYPES
 from resource_data import resource_manager
@@ -12,14 +14,14 @@ from dashboard_data import DashboardManager, export_log
 from user_data import user_manager, User
 
 app = Flask(__name__)
-app.secret_key = "change-this-secret-key"
+app.secret_key = os.environ.get("PRJ1_SECRET_KEY") or secrets.token_hex(32)
 
 
 # ==================== RBAC 角色權限系統 (7 角色) ====================
 class Role:
     # R01 系統管理員
     SYSTEM_ADMIN = "system_admin"
-    # R02 稽核主管
+    # R02 稽核人員
     AUDIT_MANAGER = "audit_manager"
     # R03 控制點負責人
     CONTROL_OWNER = "control_owner"
@@ -35,7 +37,7 @@ class Role:
 # 角色顯示名稱
 ROLE_LABELS = {
     Role.SYSTEM_ADMIN: "系統管理員",
-    Role.AUDIT_MANAGER: "稽核主管",
+    Role.AUDIT_MANAGER: "稽核人員",
     Role.CONTROL_OWNER: "控制點負責人",
     Role.TESTER: "測試人員",
     Role.PROCESS_OWNER: "改善負責人",
@@ -541,6 +543,10 @@ TEMPLATE_BASE = """
       margin-bottom: 28px;
     }
 
+    .dashboard-metrics {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
     .summary-card {
       background: var(--bg-card);
       border-radius: 20px;
@@ -880,15 +886,23 @@ TEMPLATE_BASE = """
     /* Action buttons in table cells */
     .table .action-buttons {
       display: flex;
-      flex-direction: column;
-      gap: 4px;
-      align-items: flex-start;
+      flex-direction: row;
+      gap: 8px;
+      align-items: center;
+      justify-content: flex-start;
+      flex-wrap: nowrap;
+    }
+
+    .table .action-buttons form {
+      display: inline-flex;
+      margin: 0 !important;
     }
 
     .table .action-buttons .button {
       padding: 6px 12px;
       font-size: 0.8rem;
-      min-width: auto;
+      min-width: 56px;
+      justify-content: center;
     }
 
     /* Buttons */
@@ -1420,13 +1434,25 @@ def forgot_password():
         if username and email:
             user = user_manager.get_user_by_username(username)
             if user and user.email == email:
+                audit_log_manager.add_log(
+                    "system",
+                    "password_reset_requested",
+                    "auth",
+                    f"Password reset requested for user {username}",
+                )
+            flash("如果帳號與 Email 相符，系統管理員會協助後續密碼重設。", "success")
+            return redirect(url_for("login"))
+
+        if username and email:
+            user = user_manager.get_user_by_username(username)
+            if user and user.email == email:
                 # 生成臨時密碼
                 import secrets
                 import string
-                temp_password = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(8))
+                temp_password = ""
                 
                 # 更新用戶密碼
-                user_manager.update_password_by_username(username, temp_password)
+                audit_log_manager.add_log("system", "password_reset_requested", "auth", f"Password reset requested for user {username}")
                 
                 # 設置強制修改密碼標記
                 user_manager.set_force_password_change(username, True)
@@ -1439,7 +1465,7 @@ def forgot_password():
                     f"用戶 {username} 請求密碼重置，生成臨時密碼"
                 )
                 
-                flash(f"臨時密碼已生成並發送。您的臨時密碼是：{temp_password}。請使用此密碼登入後立即修改密碼。", "success")
+                flash("如果帳號與 Email 相符，系統管理員會協助後續密碼重設。", "success")
                 return redirect(url_for("login"))
             else:
                 flash("用戶名或Email地址不正確。", "error")
@@ -2025,7 +2051,7 @@ def manage_announcements():
         button_class = "button button-secondary" if item.active else "button button-primary"
         body += f"<tr><td>{item.id}</td><td>{item.current_version.title}</td><td>{item.category}</td><td>{item.importance}</td><td>{status_badge}</td><td>{active_label}</td><td class=\"action-buttons\">"
         body += f"<a class=\"button button-secondary\" href=\"{url_for('edit_announcement', announcement_id=item.id)}\">編輯</a> "
-        body += f"<form method=\"post\" action=\"{url_for('toggle_announcement_active', announcement_id=item.id)}\" style=\"display:inline; margin-left:8px;\">"
+        body += f"<form method=\"post\" action=\"{url_for('toggle_announcement_active', announcement_id=item.id)}\" style=\"display:inline;\">"
         body += f"<button class=\"{button_class}\" type=\"submit\">{toggle_label}</button></form>"
         body += "</td></tr>"
     body += "</tbody></table></div>"
@@ -2259,7 +2285,7 @@ def manage_resources():
     resources = resource_manager.list_all_resources()
     body = ""
     body += "<div class=\"card\"><h2>資源庫維護</h2>"
-    body += "<p>稽核主管可以新增資源，並啟用/停用現有資源。</p></div>"
+    body += "<p>稽核人員可以新增資源，並啟用/停用現有資源。</p></div>"
     body += "<div class=\"card\"><h3>新增資源</h3>"
     body += "<form method=\"post\" class=\"form-grid\">"
     body += "<div class=\"form-group\"><label for=\"name\">資源名稱</label><input type=\"text\" id=\"name\" name=\"name\" required placeholder=\"資源標題\"/></div>"
@@ -2275,7 +2301,7 @@ def manage_resources():
         button_class = "button button-secondary" if resource.active else "button button-primary"
         body += f"<tr><td>{resource.id}</td><td>{resource.title}</td><td>{resource.category}</td><td>{resource.url}</td><td>{status_text}</td><td class=\"action-buttons\">"
         body += f"<a class=\"button button-secondary\" href=\"{url_for('edit_resource', resource_id=resource.id)}\">編輯</a> "
-        body += f"<form method=\"post\" action=\"{url_for('toggle_resource_active', resource_id=resource.id)}\" style=\"display:inline; margin-left:8px;\">"
+        body += f"<form method=\"post\" action=\"{url_for('toggle_resource_active', resource_id=resource.id)}\" style=\"display:inline;\">"
         body += f"<button class=\"{button_class}\" type=\"submit\">{toggle_label}</button></form>"
         body += "</td></tr>"
     body += "</tbody></table></div>"
@@ -2401,7 +2427,7 @@ def dashboard():
       <p>即時掌握內控治理狀況與關鍵指標。</p>
     </div>
     
-    <div class="summary-grid">
+    <div class="summary-grid dashboard-metrics">
       <div class="summary-card">
         <strong>RPT-01 開啟中 Issue</strong>
         <p>{metrics['RPT-01']['value']} 件</p>
@@ -2421,9 +2447,6 @@ def dashboard():
         <strong>RPT-04 平均逾期天數</strong>
         <p>{metrics['RPT-04']['value']} 天</p>
       </div>
-    </div>
-    
-    <div class="summary-grid">
       <div class="summary-card">
         <strong>RPT-06 控制測試完成率</strong>
         <p>{metrics['RPT-06']['value']}%</p>
@@ -2458,10 +2481,8 @@ def dashboard():
         status_class = "badge-low" if coverage >= 80 else ("badge-medium" if coverage >= 50 else "badge-high")
         body += f"<tr><td>{process}</td><td>{coverage}%</td><td><span class=\"badge {status_class}\">{'良好' if coverage >= 80 else ('普通' if coverage >= 50 else '不足')}</span></td></tr>"
     body += """</tbody></table></div>
-    </div>
     
-    <div class="card-grid">
-      <div class="card">
+    <div class="card">
       <h3>報表匯出 (RPT-12 ~ RPT-17)</h3>
       <p>選擇報表類型並填寫匯出用途：</p>
       <form method="post" action="/export_report">
@@ -2481,7 +2502,6 @@ def dashboard():
         <button class="button" type="submit">匯出報表</button>
       </form>
     </div>
-  </div>
     
     <a class="button button-secondary" href="/">回到公告中心</a>
 """
@@ -2489,6 +2509,7 @@ def dashboard():
 
 
 @app.route("/export_report", methods=["POST"])
+@require_login()
 def export_report():
     """匯出報表 (7.7.2, 7.7.3)"""
     from flask import Response
@@ -2761,6 +2782,7 @@ def issue_detail(issue_id):
 
 
 @app.route("/issues/<int:issue_id>/transition", methods=["POST"])
+@require_login()
 def transition_issue(issue_id):
     new_status = request.form.get("new_status", "")
     
@@ -2893,6 +2915,7 @@ def announcement_detail(announcement_id):
 
 
 @app.route("/announcement/<int:announcement_id>/transition", methods=["POST"])
+@require_login()
 def transition_announcement(announcement_id):
     """公告狀態轉換"""
     if not has_permission("can_publish_announcement"):
@@ -2921,6 +2944,7 @@ def transition_announcement(announcement_id):
 
 
 @app.route("/confirm_read/<int:announcement_id>")
+@require_login()
 def confirm_read(announcement_id):
     announcement = announcement_manager.get_announcement(announcement_id)
     if announcement is None:
@@ -3251,18 +3275,16 @@ def manage_controls():
     controls = control_manager.list_controls()
     body = ""
     body += "<div class=\"card\"><h2>控制點維護</h2>"
-    body += "<p>稽核主管可以新增、編輯與停用控制點。</p></div>"
+    body += "<p>稽核人員可以新增、編輯與停用控制點。</p></div>"
     
     # 上傳Excel表單
     body += "<div class=\"card\"><h3>批次匯入/匯出</h3>"
-    body += "<div class=\"form-actions\" style=\"margin-bottom: 20px;\">"
-    body += "<a class=\"button button-primary\" href=\"" + url_for('export_controls_excel') + "\">📥 下載控制點</a>"
-    body += "</div>"
     body += "<form method=\"post\" enctype=\"multipart/form-data\" action=\"" + url_for('import_controls_excel') + "\">"
     body += "<div class=\"form-group\"><label for=\"excel_file\">上傳Excel檔案</label>"
     body += "<input type=\"file\" id=\"excel_file\" name=\"excel_file\" accept=\".xlsx,.xls\" required/>"
     body += "</div>"
-    body += "<div class=\"form-actions\"><button class=\"button button-primary\" type=\"submit\">匯入控制點</button></div>"
+    body += "<div class=\"form-actions\" style=\"gap: 16px;\"><button class=\"button button-primary\" type=\"submit\">匯入控制點</button>"
+    body += "<a class=\"button button-primary\" href=\"" + url_for('export_controls_excel') + "\">📥 下載控制點</a></div>"
     body += "</form></div>"
     
     # 新增控制點表單
@@ -3497,4 +3519,8 @@ def import_controls_excel():
 
 
 if __name__ == "__main__":
-    app.run(debug=False, port=5000)
+    app.run(
+        debug=False,
+        host=os.environ.get("PRJ1_HOST", "127.0.0.1"),
+        port=int(os.environ.get("PRJ1_PORT", "5000")),
+    )

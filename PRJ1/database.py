@@ -6,7 +6,7 @@ import os
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "icp_system.db")
+DB_PATH = os.environ.get("PRJ1_DB_PATH") or os.path.join(os.path.dirname(__file__), "icp_system.db")
 
 
 def get_db_connection():

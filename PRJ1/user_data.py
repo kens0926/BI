@@ -6,6 +6,9 @@ from typing import List, Optional
 from datetime import datetime
 from database import get_db_connection
 import hashlib
+import os
+import secrets
+from werkzeug.security import check_password_hash, generate_password_hash
 
 
 @dataclass
@@ -32,7 +35,6 @@ class UserManager:
     """用戶管理器"""
     
     DEFAULT_ADMIN_USERNAME = "admin"
-    DEFAULT_ADMIN_PASSWORD = "admin123"
     DEFAULT_ADMIN_ROLE = "system_admin"
 
     def __init__(self):
@@ -102,7 +104,7 @@ class UserManager:
             """,
             (
                 self.DEFAULT_ADMIN_USERNAME,
-                self.hash_password(self.DEFAULT_ADMIN_PASSWORD),
+                self.hash_password(self._get_default_admin_password()),
                 self.DEFAULT_ADMIN_ROLE,
                 "系統管理員",
                 "",
@@ -113,6 +115,19 @@ class UserManager:
         conn.commit()
         conn.close()
         self._load_users()
+
+    def _get_default_admin_password(self) -> str:
+        password = os.environ.get("PRJ1_DEFAULT_ADMIN_PASSWORD")
+        if password:
+            return password
+
+        password = secrets.token_urlsafe(18)
+        print(
+            "WARNING: Created default admin with a random temporary password. "
+            "Set PRJ1_DEFAULT_ADMIN_PASSWORD before first startup to choose it. "
+            f"Temporary password: {password}"
+        )
+        return password
 
     def _row_to_user(self, row) -> User:
         """將資料庫資料轉換為 User 物件"""
@@ -133,14 +148,34 @@ class UserManager:
     @staticmethod
     def hash_password(password: str) -> str:
         """加密密碼 (簡單 SHA-256，生產環境應使用 bcrypt)"""
+        return generate_password_hash(password)
+
+    @staticmethod
+    def legacy_hash_password(password: str) -> str:
+        """Return the legacy unsalted SHA-256 hash for migration checks."""
         return hashlib.sha256(password.encode()).hexdigest()
+
+    @staticmethod
+    def is_legacy_password_hash(password_hash: str) -> bool:
+        return len(password_hash) == 64 and all(
+            ch in "0123456789abcdef" for ch in password_hash.lower()
+        )
+
+    def verify_password(self, user: User, password: str) -> bool:
+        if self.is_legacy_password_hash(user.password):
+            if user.password == self.legacy_hash_password(password):
+                self.change_password(user.id, password)
+                return True
+            return False
+
+        return check_password_hash(user.password, password)
 
     def authenticate(self, username: str, password: str) -> Optional[User]:
         """驗證用戶名和密碼"""
         user = self.get_user_by_username(username)
         if user and user.is_active():
             # 檢查密碼
-            if user.password == self.hash_password(password):
+            if self.verify_password(user, password):
                 return user
         return None
 
