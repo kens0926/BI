@@ -1,0 +1,96 @@
+:root{
+  --bg: #f6f8fb;
+  --text: #172033;
+  --sidebar-bg: #0b1220;
+  --sidebar-text: #f9fafb;
+  --muted: #6b7280;
+  --card-bg: #ffffff;
+  --border: #e5e7eb;
+  --primary: #0d6efd;
+  --accent: #eef2ff;
+  --radius: 8px;
+}
+
+/* Green theme override */
+body.theme-green{
+  --primary: #0f9d58;
+  --accent: #ecfdf5;
+}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial}
+.app-shell{min-height:100vh;display:flex}
+
+/* Sidebar */
+.sidebar{width:260px;background:var(--sidebar-bg);color:var(--sidebar-text);flex:0 0 260px}
+.sidebar .fw-bold{color:var(--sidebar-text)}
+.sidebar .nav-link{color:#cbd5e1;border-radius:6px}
+.sidebar .nav-link.active,.sidebar .nav-link:hover{background:#243244;color:#fff}
+
+/* Card / metrics */
+.metric{border:1px solid var(--border);border-radius:var(--radius);background:var(--card-bg)}
+.table-card{border:1px solid var(--border);border-radius:var(--radius);background:var(--card-bg)}
+.login-panel{max-width:420px;margin:12vh auto}
+.badge-soft{background:var(--accent);color:#3730a3}
+.content{min-width:0;padding:1rem}
+
+/* Metrics layout */
+#metrics{display:flex;flex-wrap:wrap;gap:.75rem}
+#metrics .metric{padding:1rem;flex:1 1 180px;min-width:140px}
+
+/* Accessibility and focus */
+:focus{outline: none}
+a:focus,button:focus,input:focus,select:focus,textarea:focus{outline:3px solid rgba(13,110,253,0.25);outline-offset:2px}
+.skip-link{position:absolute;left:-999px;top:auto;width:1px;height:1px;overflow:hidden}
+.skip-link:focus{position:fixed;left:1rem;top:1rem;width:auto;height:auto;padding:.5rem .75rem;background:#fff;border:1px solid var(--border);z-index:9999;border-radius:4px}
+
+/* Responsive behaviour */
+@media (max-width: 767.98px){
+  .sidebar{position:fixed;left:0;top:0;bottom:0;transform:translateX(-110%);transition:transform .22s ease;z-index:1040;padding-top:1rem}
+  .sidebar.show{transform:translateX(0)}
+  .app-shell{position:relative}
+  .content{padding:1rem;margin-left:0}
+  /* Dim overlay when sidebar open */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:1030;display:none}
+  .overlay.show{display:block}
+}
+
+@media (min-width: 768px){
+  .sidebar{transform:none;position:relative}
+  .overlay{display:none}
+}
+
+/* small visual tweaks */
+.table-responsive{overflow:auto}
+.modal .modal-body .form-label{font-weight:600}
+
+/* Modal responsive improvements */
+.modal-dialog{max-width:720px}
+@media (max-width:576px){
+  .modal-dialog{max-width:95%;margin:1.25rem}
+  .modal-body{padding:.75rem}
+}
+
+/* Buttons */
+.btn-primary{background:var(--primary);border-color:var(--primary)}
+
+/* Sidebar contrast tweak */
+.sidebar{color:var(--sidebar-text)}
+.sidebar .nav-link{color:rgba(203,213,225,0.95)}
+.sidebar .nav-link.active{background:#172033}
+
+/* Responsive table -> card view on narrow screens */
+@media (max-width: 767.98px){
+  .table-responsive table thead{display:none}
+  .table-responsive table, .table-responsive tbody, .table-responsive tr, .table-responsive td{display:block;width:100%}
+  .table-responsive tr{margin-bottom:.75rem;border:1px solid var(--border);border-radius:6px;padding:.5rem;background:var(--card-bg)}
+  .table-responsive td{display:flex;justify-content:space-between;padding:.45rem 0;border-top:1px dashed var(--border)}
+  .table-responsive td:first-child{border-top:none}
+  .table-responsive td::before{content:attr(data-label);color:var(--muted);margin-right:.75rem;font-weight:600}
+}
+
+/* Utility */
+.d-none{display:none !important}
+
+/* Ensure tables and controls readable */
+.table td,.table th{vertical-align:middle}

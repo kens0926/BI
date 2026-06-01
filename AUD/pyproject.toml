@@ -1,0 +1,25 @@
+[project]
+name = "aud-iams"
+version = "0.1.0"
+description = "Internal Audit Management System based on AUD/ICP.MD"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.2",
+    "python-jose[cryptography]>=3.3",
+    "python-multipart>=0.0.9",
+    "pydantic>=2.7",
+    "openpyxl>=3.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "httpx2>=0.28",
+]
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
