@@ -1,7 +1,13 @@
 import sqlite3
+import sys
 from pathlib import Path
 
-DB_FILE = Path(__file__).parent / "api_tool.db"
+if getattr(sys, "frozen", False):
+    BASE_DIR = Path(sys.executable).resolve().parent
+else:
+    BASE_DIR = Path(__file__).resolve().parent
+
+DB_FILE = BASE_DIR / "api_tool.db"
 
 CREATE_API_MASTER = """
 CREATE TABLE IF NOT EXISTS api_master(
