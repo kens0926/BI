@@ -64,7 +64,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Theme handling
   const themeSelect = document.getElementById('themeSelect');
   function applyTheme(name){
-    if (name === 'green') document.body.classList.add('theme-green'); else document.body.classList.remove('theme-green');
+    document.body.classList.remove('theme-green', 'theme-dark');
+    if (name === 'green') document.body.classList.add('theme-green');
+    if (name === 'dark') document.body.classList.add('theme-dark');
     try{ localStorage.setItem('iams_theme', name); }catch(e){}
   }
   function initTheme(){

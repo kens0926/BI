@@ -6,7 +6,7 @@
   <title>內控稽核管理系統</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><text y='20' font-size='20'>📋</text></svg>">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/styles.css">
+  <link rel="stylesheet" href="/static/css/styles.css?v=20260607">
 </head>
 <body>
   <a class="skip-link" href="#mainContent">跳至內容</a>
@@ -23,7 +23,7 @@
           <input class="form-control" id="password" type="password" value="admin123" autocomplete="current-password">
         </div>
         <button class="btn btn-primary" type="submit">登入</button>
-        <div id="loginError" class="text-danger small"></div>
+        <div id="loginError" class="text-danger small" aria-live="polite"></div>
       </form>
     </div>
   </div>
@@ -35,10 +35,12 @@
           <div class="fw-bold">IAMS</div>
         </div>
         <div id="userLabel" class="small text-secondary"></div>
-        <div class="mt-2">
+        <div class="theme-switcher mt-3">
+          <label class="form-label visually-hidden" for="themeSelect">主題切換</label>
           <select id="themeSelect" class="form-select form-select-sm" aria-label="主題切換">
             <option value="default">主題：藍色</option>
             <option value="green">主題：綠色</option>
+            <option value="dark">主題：深色</option>
           </select>
         </div>
       </div>
@@ -54,13 +56,16 @@
     </aside>
 
     <main id="mainContent" class="content flex-grow-1 p-4" role="main">
-      <button id="toggleSidebar" class="btn btn-outline-secondary d-md-none mb-3" aria-controls="sidebar" aria-expanded="false">選單</button>
+      <button id="toggleSidebar" class="btn btn-outline-secondary d-md-none mb-3 sidebar-toggle" aria-controls="sidebar" aria-expanded="false" aria-label="切換選單">☰ 選單</button>
       <section id="dashboard" class="view">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-          <h2 class="h4 mb-0">Dashboard</h2>
+        <div class="dashboard-header d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4 gap-3">
+          <div>
+            <h2 class="h4 mb-1">Dashboard</h2>
+            <p class="dashboard-intro text-muted mb-0">內控稽核系統總覽與最新公告，快速掌握目前稽核狀況。</p>
+          </div>
           <span class="badge badge-soft">MVP</span>
         </div>
-        <div id="announcementList" class="mb-3" role="status" aria-live="polite"></div>
+        <div id="announcementList" class="announcement-list mb-4" role="status" aria-live="polite"></div>
         <div id="metrics" class="row g-3" aria-label="系統統計指標"></div>
       </section>
 
@@ -94,7 +99,17 @@
         <div class="d-flex justify-content-between align-items-start mb-3 gap-3">
           <div>
             <h2 class="h4 mb-2">查核記錄</h2>
-            <select class="form-select" id="recordPlanFilter" style="min-width: 320px;"></select>
+            <div class="position-relative" style="min-width:320px;max-width:540px;">
+              <div class="input-group">
+                <input class="form-control" list="recordPlanFilterList" id="recordPlanFilter" autocomplete="off" aria-label="稽核任務搜尋" placeholder="請輸入稽核任務，選擇後自動過濾">
+                <button class="btn btn-outline-secondary clear-filter-btn" type="button" id="clearRecordPlanFilter" aria-label="清除篩選">清除</button>
+              </div>
+              <div id="recordPlanFilterSuggestions" class="autocomplete-dropdown d-none" role="listbox" aria-label="稽核任務建議"></div>
+              <datalist id="recordPlanFilterList"></datalist>
+            </div>
+            <div class="form-text text-secondary" id="recordPlanFilterHint" style="max-width:540px;">
+              輸入任務編號、年度或部門，即可從下拉清單快速選擇對應稽核任務。
+            </div>
           </div>
           <div class="d-flex gap-2">
             <button class="btn btn-outline-secondary btn-sm" id="exportRecordsBtn" type="button">Excel 匯出</button>
@@ -188,516 +203,7 @@
   </form></div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="/static/js/ui.js"></script>
-  <script>
-    let token = localStorage.getItem("iams_token");
-    let cache = { plans: [], questions: [], records: [], users: [] };
-    let editing = { planId: null, questionId: null, recordId: null, userId: null };
-    let currentUser = null;
-    let selectedRecordPlanId = "";
-
-    function readableError(errorBody) {
-      if (!errorBody) return "API request failed";
-      const detail = errorBody.detail || errorBody.message || errorBody;
-      if (typeof detail === "string") return detail;
-      if (Array.isArray(detail)) {
-        return detail.map(item => {
-          if (typeof item === "string") return item;
-          const loc = Array.isArray(item.loc) ? item.loc.join(".") : "";
-          return [loc, item.msg || JSON.stringify(item)].filter(Boolean).join(": ");
-        }).join(", ");
-      }
-      return JSON.stringify(detail);
-    }
-
-    async function api(path, options = {}) {
-      const headers = { ...(options.headers || {}) };
-      if (token) headers.Authorization = `Bearer ${token}`;
-      if (
-        options.body &&
-        !(options.body instanceof FormData) &&
-        !(options.body instanceof URLSearchParams) &&
-        !headers["Content-Type"]
-      ) {
-        headers["Content-Type"] = "application/json";
-      }
-      const res = await fetch(path, { ...options, headers });
-      if (!res.ok) {
-        let errorBody = null;
-        try { errorBody = await res.json(); } catch {}
-        throw new Error(readableError(errorBody));
-      }
-      return res.json();
-    }
-
-    function formData(form) {
-      return Object.fromEntries([...new FormData(form).entries()].filter(([, value]) => value !== ""));
-    }
-
-    function fillForm(form, values) {
-      Object.entries(values).forEach(([key, value]) => {
-        const field = form.elements[key];
-        if (!field) return;
-        field.value = value ?? "";
-      });
-    }
-
-    function normalizePayload(payload) {
-      const normalized = { ...payload };
-      if ("year" in normalized) normalized.year = Number(normalized.year);
-      if ("enabled" in normalized) normalized.enabled = normalized.enabled === true || normalized.enabled === "true";
-      return normalized;
-    }
-
-    function showModal(id) {
-      bootstrap.Modal.getOrCreateInstance(document.getElementById(id)).show();
-    }
-
-    async function showApp(user) {
-      currentUser = user;
-      document.getElementById("loginView").classList.add("d-none");
-      document.getElementById("appView").classList.remove("d-none");
-      document.getElementById("userLabel").textContent = `${user.name} / ${user.role}`;
-      await loadAll();
-    }
-
-    async function loadAll() {
-      await Promise.all([loadDashboard(), loadPlans(), loadQuestions(), loadActions(), loadUsers()]);
-      await loadRecords();
-    }
-
-    async function loadDashboard() {
-      const [stats, announcements] = await Promise.all([api("/api/reports/dashboard"), api("/api/announcements")]);
-      const metricMap = [
-        ["年度計畫", stats.data.audit_plan_count],
-        ["進行中計畫", stats.data.open_plan_count],
-        ["啟用題目", stats.data.question_count],
-        ["查核記錄", stats.data.audit_record_count],
-        ["CAR/OFI", `${stats.data.car_count}/${stats.data.ofi_count}`],
-        ["待追蹤改善", stats.data.open_corrective_action_count],
-      ];
-      document.getElementById("metrics").innerHTML = metricMap.map(([label, value]) => `
-        <div class="col-md-4 col-xl-2"><div class="metric p-3"><div class="text-secondary small">${label}</div><div class="fs-3 fw-bold">${value}</div></div></div>
-      `).join("");
-      document.getElementById("announcementList").innerHTML = announcements.data.map(item => `
-        <div class="alert alert-info mb-2"><strong>${item.title}</strong><div>${item.content}</div></div>
-      `).join("");
-    }
-
-    async function loadPlans() {
-      const res = await api("/api/audit-plans");
-      cache.plans = res.data;
-      document.getElementById("planTable").innerHTML = `
-        <thead><tr><th>任務編號</th><th>年度</th><th>循環</th><th>部門</th><th>稽核員</th><th>狀態</th><th></th></tr></thead>
-        <tbody>${res.data.map(row => `<tr><td data-label="任務編號">${row.task_no}</td><td data-label="年度">${row.year}</td><td data-label="循環">${row.cycle_name}</td><td data-label="部門">${row.department}</td><td data-label="稽核員">${row.auditor_name || ""}</td><td data-label="狀態">${row.status}</td><td class="text-end" data-label="操作"><button class="btn btn-outline-primary btn-sm" data-edit-plan="${row.id}">編輯</button></td></tr>`).join("")}</tbody>
-      `;
-      document.getElementById("recordPlanSelect").innerHTML = res.data.map(row => `<option value="${row.id}">${row.task_no} ${row.cycle_name}</option>`).join("");
-      if (!selectedRecordPlanId && res.data.length) selectedRecordPlanId = res.data[0].id;
-      document.getElementById("recordPlanFilter").innerHTML = res.data.length
-        ? res.data.map(row => `<option value="${row.id}">${row.task_no} / ${row.year} / ${row.cycle_name} / ${row.department}</option>`).join("")
-        : `<option value="">尚無稽核任務</option>`;
-      document.getElementById("recordPlanFilter").value = selectedRecordPlanId;
-      document.getElementById("recordPlanSelect").value = selectedRecordPlanId;
-    }
-
-    async function loadQuestions() {
-      const res = await api("/api/questions");
-      cache.questions = res.data;
-      document.getElementById("questionTable").innerHTML = `
-        <thead><tr><th>循環</th><th>部門</th><th>題目</th><th>啟用</th><th></th></tr></thead>
-        <tbody>${res.data.map(row => `<tr><td data-label="循環">${row.cycle_name}</td><td data-label="部門">${row.department}</td><td data-label="題目">${row.question}</td><td data-label="啟用">${row.enabled ? "是" : "否"}</td><td class="text-end" data-label="操作"><button class="btn btn-outline-primary btn-sm" data-edit-question="${row.id}">編輯</button></td></tr>`).join("")}</tbody>
-      `;
-      document.getElementById("recordQuestionSelect").innerHTML = res.data.map(row => `<option value="${row.id}">${row.cycle_name} ${row.question}</option>`).join("");
-    }
-
-    async function loadRecords() {
-      if (!selectedRecordPlanId) {
-        cache.records = [];
-        document.getElementById("recordTable").innerHTML = `<tbody><tr><td class="text-secondary">請先建立並選定稽核任務。</td></tr></tbody>`;
-        return;
-      }
-      const res = await api(`/api/audit-records?audit_plan_id=${encodeURIComponent(selectedRecordPlanId)}`);
-      cache.records = res.data;
-      document.getElementById("recordTable").innerHTML = `
-        <thead><tr><th>結果</th><th>查核說明</th><th>改善建議</th><th>建立時間</th><th></th></tr></thead>
-        <tbody>${res.data.map(row => `<tr><td data-label="結果">${row.result_type}</td><td data-label="查核說明">${row.finding || ""}</td><td data-label="改善建議">${row.suggestion || ""}</td><td data-label="建立時間">${new Date(row.created_at).toLocaleString()}</td><td class="text-end" data-label="操作"><button class="btn btn-outline-primary btn-sm" data-edit-record="${row.id}">編輯</button></td></tr>`).join("")}</tbody>
-      `;
-      document.getElementById("actionRecordSelect").innerHTML = res.data.map(row => `<option value="${row.id}">${row.result_type} ${row.finding || row.id}</option>`).join("");
-    }
-
-    async function loadActions() {
-      const res = await api("/api/corrective-actions");
-      document.getElementById("actionTable").innerHTML = `
-        <thead><tr><th>責任單位</th><th>期限</th><th>狀態</th><th>改善說明</th></tr></thead>
-        <tbody>${res.data.map(row => `<tr><td data-label="責任單位">${row.responsible_department}</td><td data-label="期限">${row.due_date}</td><td data-label="狀態">${row.status}</td><td data-label="改善說明">${row.action_description}</td></tr>`).join("")}</tbody>
-      `;
-    }
-
-    async function loadUsers() {
-      if (!currentUser || currentUser.role !== "Admin") {
-        document.getElementById("userTable").innerHTML = `<tbody><tr><td class="text-secondary">只有 Admin 可以維護用戶。</td></tr></tbody>`;
-        return;
-      }
-      const res = await api("/api/auth/users");
-      cache.users = res.data;
-      document.getElementById("userTable").innerHTML = `
-        <thead><tr><th>帳號</th><th>姓名</th><th>角色</th><th>建立時間</th><th></th></tr></thead>
-        <tbody>${res.data.map(row => `<tr><td data-label="帳號">${row.account}</td><td data-label="姓名">${row.name}</td><td data-label="角色">${row.role}</td><td data-label="建立時間">${new Date(row.created_at).toLocaleString()}</td><td class="text-end" data-label="操作"><button class="btn btn-outline-primary btn-sm" data-edit-user="${row.id}">編輯</button></td></tr>`).join("")}</tbody>
-      `;
-    }
-
-    document.getElementById("loginForm").addEventListener("submit", async event => {
-      event.preventDefault();
-      if (!loginForm.checkValidity()) { loginForm.reportValidity(); return; }
-      const body = new URLSearchParams({ username: account.value, password: password.value });
-      try {
-        const res = await api("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body });
-        token = res.access_token;
-        localStorage.setItem("iams_token", token);
-        await showApp(res.user);
-      } catch (err) {
-        loginError.textContent = err.message;
-      }
-    });
-
-    addPlanBtn.addEventListener("click", () => {
-      editing.planId = null;
-      planModalTitle.textContent = "新增年度計畫";
-      planForm.reset();
-      planForm.elements.year.value = "2026";
-    });
-
-    addQuestionBtn.addEventListener("click", () => {
-      editing.questionId = null;
-      questionModalTitle.textContent = "新增題目";
-      questionForm.reset();
-      questionForm.elements.enabled.value = "true";
-    });
-
-    addRecordBtn.addEventListener("click", event => {
-      if (!selectedRecordPlanId) {
-        event.preventDefault();
-        event.stopPropagation();
-        alert("請先選定稽核任務。");
-        return;
-      }
-      editing.recordId = null;
-      recordModalTitle.textContent = "新增查核記錄";
-      recordForm.reset();
-      recordForm.elements.audit_plan_id.value = selectedRecordPlanId;
-    });
-
-    addUserBtn.addEventListener("click", () => {
-      editing.userId = null;
-      userModalTitle.textContent = "新增用戶";
-      userForm.reset();
-      userForm.elements.account.disabled = false;
-      userForm.elements.password.required = true;
-      userForm.elements.role.value = "Viewer";
-    });
-
-    planForm.addEventListener("submit", async event => {
-      event.preventDefault();
-      if (!planForm.checkValidity()) { planForm.reportValidity(); return; }
-      try {
-        const payload = normalizePayload(formData(planForm));
-        const path = editing.planId ? `/api/audit-plans/${editing.planId}` : "/api/audit-plans";
-        const method = editing.planId ? "PUT" : "POST";
-        await api(path, { method, body: JSON.stringify(payload) });
-        bootstrap.Modal.getInstance(planModal).hide();
-        editing.planId = null;
-        planForm.reset();
-        await loadAll();
-      } catch (err) {
-        alert(`儲存失敗：${err.message}`);
-      }
-    });
-
-    questionForm.addEventListener("submit", async event => {
-      event.preventDefault();
-      if (!questionForm.checkValidity()) { questionForm.reportValidity(); return; }
-      try {
-        const payload = normalizePayload(formData(questionForm));
-        const path = editing.questionId ? `/api/questions/${editing.questionId}` : "/api/questions";
-        const method = editing.questionId ? "PUT" : "POST";
-        await api(path, { method, body: JSON.stringify(payload) });
-        bootstrap.Modal.getInstance(questionModal).hide();
-        editing.questionId = null;
-        questionForm.reset();
-        await loadAll();
-      } catch (err) {
-        alert(`儲存失敗：${err.message}`);
-      }
-    });
-
-    recordForm.addEventListener("submit", async event => {
-      event.preventDefault();
-      if (!recordForm.checkValidity()) { recordForm.reportValidity(); return; }
-      try {
-        const payload = normalizePayload(formData(recordForm));
-        payload.audit_plan_id = selectedRecordPlanId;
-        const path = editing.recordId ? `/api/audit-records/${editing.recordId}` : "/api/audit-records";
-        const method = editing.recordId ? "PUT" : "POST";
-        await api(path, { method, body: JSON.stringify(payload) });
-        bootstrap.Modal.getInstance(recordModal).hide();
-        editing.recordId = null;
-        recordForm.reset();
-        await loadAll();
-      } catch (err) {
-        alert(`儲存失敗：${err.message}`);
-      }
-    });
-
-    actionForm.addEventListener("submit", async event => {
-      event.preventDefault();
-      if (!actionForm.checkValidity()) { actionForm.reportValidity(); return; }
-      try {
-        await api("/api/corrective-actions", { method: "POST", body: JSON.stringify(formData(actionForm)) });
-        bootstrap.Modal.getInstance(actionModal).hide();
-        actionForm.reset();
-        await loadAll();
-      } catch (err) {
-        alert(`儲存失敗：${err.message}`);
-      }
-    });
-
-    userForm.addEventListener("submit", async event => {
-      event.preventDefault();
-      if (!userForm.checkValidity()) { userForm.reportValidity(); return; }
-      try {
-        const payload = formData(userForm);
-        const path = editing.userId ? `/api/auth/users/${editing.userId}` : "/api/auth/users";
-        const method = editing.userId ? "PUT" : "POST";
-        if (editing.userId) {
-          delete payload.account;
-          if (!payload.password) delete payload.password;
-        }
-        await api(path, { method, body: JSON.stringify(payload) });
-        bootstrap.Modal.getInstance(userModal).hide();
-        editing.userId = null;
-        userForm.reset();
-        await loadUsers();
-      } catch (err) {
-        alert(`儲存失敗：${err.message}`);
-      }
-    });
-
-    planTable.addEventListener("click", event => {
-      const button = event.target.closest("[data-edit-plan]");
-      if (!button) return;
-      const row = cache.plans.find(item => item.id === button.dataset.editPlan);
-      if (!row) return;
-      editing.planId = row.id;
-      planModalTitle.textContent = "編輯年度計畫";
-      fillForm(planForm, row);
-      showModal("planModal");
-    });
-
-    questionTable.addEventListener("click", event => {
-      const button = event.target.closest("[data-edit-question]");
-      if (!button) return;
-      const row = cache.questions.find(item => item.id === button.dataset.editQuestion);
-      if (!row) return;
-      editing.questionId = row.id;
-      questionModalTitle.textContent = "編輯題目";
-      fillForm(questionForm, { ...row, enabled: row.enabled ? "true" : "false" });
-      showModal("questionModal");
-    });
-
-    recordTable.addEventListener("click", event => {
-      const button = event.target.closest("[data-edit-record]");
-      if (!button) return;
-      const row = cache.records.find(item => item.id === button.dataset.editRecord);
-      if (!row) return;
-      editing.recordId = row.id;
-      recordModalTitle.textContent = "編輯查核記錄";
-      fillForm(recordForm, row);
-      recordForm.elements.audit_plan_id.value = selectedRecordPlanId;
-      showModal("recordModal");
-    });
-
-    recordPlanFilter.addEventListener("change", async event => {
-      selectedRecordPlanId = event.target.value;
-      recordPlanSelect.value = selectedRecordPlanId;
-      await loadRecords();
-    });
-
-    userTable.addEventListener("click", event => {
-      const button = event.target.closest("[data-edit-user]");
-      if (!button) return;
-      const row = cache.users.find(item => item.id === button.dataset.editUser);
-      if (!row) return;
-      editing.userId = row.id;
-      userModalTitle.textContent = "編輯用戶";
-      fillForm(userForm, { ...row, password: "" });
-      userForm.elements.account.disabled = true;
-      userForm.elements.password.required = false;
-      showModal("userModal");
-    });
-
-    exportPlansBtn.addEventListener("click", async () => {
-      try {
-        const res = await fetch("/api/audit-plans/export", {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (!res.ok) {
-          let errorBody = null;
-          try { errorBody = await res.json(); } catch {}
-          throw new Error(readableError(errorBody));
-        }
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `audit_plans_${new Date().toISOString().slice(0, 10)}.xlsx`;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(url);
-      } catch (err) {
-        alert(`匯出失敗：${err.message}`);
-      }
-    });
-
-    importPlansBtn.addEventListener("click", () => {
-      planImportFile.click();
-    });
-
-    planImportFile.addEventListener("change", async event => {
-      const file = event.target.files[0];
-      if (!file) return;
-      const body = new FormData();
-      body.append("file", file);
-      try {
-        const res = await api("/api/audit-plans/import", { method: "POST", body });
-        alert(`匯入完成：新增 ${res.data.created} 筆，更新 ${res.data.updated} 筆`);
-        await loadPlans();
-        await loadDashboard();
-      } catch (err) {
-        alert(`匯入失敗：${err.message}`);
-      } finally {
-        event.target.value = "";
-      }
-    });
-
-    exportQuestionsBtn.addEventListener("click", async () => {
-      try {
-        const res = await fetch("/api/questions/export", {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (!res.ok) {
-          let errorBody = null;
-          try { errorBody = await res.json(); } catch {}
-          throw new Error(readableError(errorBody));
-        }
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `audit_questions_${new Date().toISOString().slice(0, 10)}.xlsx`;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(url);
-      } catch (err) {
-        alert(`匯出失敗：${err.message}`);
-      }
-    });
-
-    importQuestionsBtn.addEventListener("click", () => {
-      questionImportFile.click();
-    });
-
-    questionImportFile.addEventListener("change", async event => {
-      const file = event.target.files[0];
-      if (!file) return;
-      const body = new FormData();
-      body.append("file", file);
-      try {
-        const res = await api("/api/questions/import", { method: "POST", body });
-        alert(`匯入完成：新增 ${res.data.created} 筆，更新 ${res.data.updated} 筆`);
-        await loadQuestions();
-        await loadDashboard();
-      } catch (err) {
-        alert(`匯入失敗：${err.message}`);
-      } finally {
-        event.target.value = "";
-      }
-    });
-
-    exportRecordsBtn.addEventListener("click", async () => {
-      if (!selectedRecordPlanId) {
-        alert("請先選定稽核任務。");
-        return;
-      }
-      try {
-        const res = await fetch(`/api/audit-records/export?audit_plan_id=${encodeURIComponent(selectedRecordPlanId)}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (!res.ok) {
-          let errorBody = null;
-          try { errorBody = await res.json(); } catch {}
-          throw new Error(readableError(errorBody));
-        }
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `audit_records_${new Date().toISOString().slice(0, 10)}.xlsx`;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(url);
-      } catch (err) {
-        alert(`匯出失敗：${err.message}`);
-      }
-    });
-
-    importRecordsBtn.addEventListener("click", () => {
-      if (!selectedRecordPlanId) {
-        alert("請先選定稽核任務。");
-        return;
-      }
-      recordImportFile.click();
-    });
-
-    recordImportFile.addEventListener("change", async event => {
-      const file = event.target.files[0];
-      if (!file) return;
-      const body = new FormData();
-      body.append("file", file);
-      try {
-        const res = await api(`/api/audit-records/import?audit_plan_id=${encodeURIComponent(selectedRecordPlanId)}`, { method: "POST", body });
-        alert(`匯入完成：新增 ${res.data.created} 筆，更新 ${res.data.updated} 筆`);
-        await loadRecords();
-        await loadDashboard();
-      } catch (err) {
-        alert(`匯入失敗：${err.message}`);
-      } finally {
-        event.target.value = "";
-      }
-    });
-
-    document.querySelectorAll("[data-view]").forEach(link => link.addEventListener("click", event => {
-      event.preventDefault();
-      document.querySelectorAll("[data-view]").forEach(item => item.classList.remove("active"));
-      link.classList.add("active");
-      document.querySelectorAll(".view").forEach(view => view.classList.add("d-none"));
-      document.getElementById(link.dataset.view).classList.remove("d-none");
-    }));
-
-    logoutBtn.addEventListener("click", () => {
-      localStorage.removeItem("iams_token");
-      location.reload();
-    });
-
-    if (token) {
-      api("/api/auth/me").then(showApp).catch(() => {
-        localStorage.removeItem("iams_token");
-        token = null;
-        document.getElementById("loginView").classList.remove("d-none");
-      });
-    }
-  </script>
+  <script src="/static/js/ui.js?v=20260607"></script>
+  <script src="/static/js/app.js?v=20260607"></script>
 </body>
 </html>
