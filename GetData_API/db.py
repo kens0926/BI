@@ -1,6 +1,7 @@
 import sqlite3
 import sys
 from pathlib import Path
+from contextlib import contextmanager
 
 if getattr(sys, "frozen", False):
     BASE_DIR = Path(sys.executable).resolve().parent
@@ -8,6 +9,9 @@ else:
     BASE_DIR = Path(__file__).resolve().parent
 
 DB_FILE = BASE_DIR / "api_tool.db"
+
+# 全局連接緩存
+_db_connection = None
 
 CREATE_API_MASTER = """
 CREATE TABLE IF NOT EXISTS api_master(
@@ -31,26 +35,45 @@ CREATE TABLE IF NOT EXISTS api_parameter(
 
 
 def get_connection():
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
-    return conn
+    """取得連接（使用連接池）"""
+    global _db_connection
+    if _db_connection is None:
+        _db_connection = sqlite3.connect(DB_FILE, check_same_thread=False)
+        _db_connection.row_factory = sqlite3.Row
+    return _db_connection
+
+
+def close_connection():
+    """關閉連接"""
+    global _db_connection
+    if _db_connection:
+        _db_connection.close()
+        _db_connection = None
+
+
+@contextmanager
+def get_db_cursor():
+    """上下文管理器：取得遊標"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        yield cursor
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
 
 
 def init_db():
-    conn = get_connection()
-    try:
-        cursor = conn.cursor()
+    with get_db_cursor() as cursor:
         cursor.execute(CREATE_API_MASTER)
         cursor.execute(CREATE_API_PARAMETER)
-        conn.commit()
-    finally:
-        conn.close()
 
 
 def save_api(api_name, api_url, method, api_id=None):
-    conn = get_connection()
-    try:
-        cursor = conn.cursor()
+    with get_db_cursor() as cursor:
         if api_id:
             cursor.execute(
                 "UPDATE api_master SET api_name = ?, api_url = ?, method = ? WHERE id = ?",
@@ -62,47 +85,29 @@ def save_api(api_name, api_url, method, api_id=None):
                 (api_name, api_url, method),
             )
             api_id = cursor.lastrowid
-        conn.commit()
         return api_id
-    finally:
-        conn.close()
 
 
 def get_api(api_id):
-    conn = get_connection()
-    try:
-        cursor = conn.cursor()
+    with get_db_cursor() as cursor:
         cursor.execute("SELECT * FROM api_master WHERE id = ?", (api_id,))
         return cursor.fetchone()
-    finally:
-        conn.close()
 
 
 def load_apis():
-    conn = get_connection()
-    try:
-        cursor = conn.cursor()
+    with get_db_cursor() as cursor:
         cursor.execute("SELECT * FROM api_master ORDER BY id DESC")
         return cursor.fetchall()
-    finally:
-        conn.close()
 
 
 def delete_api(api_id):
-    conn = get_connection()
-    try:
-        cursor = conn.cursor()
+    with get_db_cursor() as cursor:
         cursor.execute("DELETE FROM api_parameter WHERE api_id = ?", (api_id,))
         cursor.execute("DELETE FROM api_master WHERE id = ?", (api_id,))
-        conn.commit()
-    finally:
-        conn.close()
 
 
 def save_api_parameters(api_id, parameters):
-    conn = get_connection()
-    try:
-        cursor = conn.cursor()
+    with get_db_cursor() as cursor:
         cursor.execute("DELETE FROM api_parameter WHERE api_id = ?", (api_id,))
         cursor.executemany(
             "INSERT INTO api_parameter(api_id, parameter_name, source_column, default_value) VALUES(?, ?, ?, ?)",
@@ -116,19 +121,12 @@ def save_api_parameters(api_id, parameters):
                 for p in parameters
             ],
         )
-        conn.commit()
-    finally:
-        conn.close()
 
 
 def load_api_parameters(api_id):
-    conn = get_connection()
-    try:
-        cursor = conn.cursor()
+    with get_db_cursor() as cursor:
         cursor.execute(
             "SELECT * FROM api_parameter WHERE api_id = ? ORDER BY id",
             (api_id,),
         )
         return cursor.fetchall()
-    finally:
-        conn.close()
