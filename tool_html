@@ -158,6 +158,9 @@
 
     /* Chart */
     .chart-card{ background:white; border-radius:20px; padding:20px; box-shadow: 0 4px 20px rgba(0,0,0,.08); }
+    /* Fix: give a fixed height to the chart wrapper to avoid Chart.js resizing loop */
+    .chart-wrapper{ height:240px; }
+    .chart-wrapper canvas{ width:100% !important; height:100% !important; display:block; }
 
     /* Small screens adjustments */
     @media (max-width: 767px) {
@@ -267,7 +270,9 @@
           <div class="col-md-4 mb-3">
               <div class="chart-card">
                   <h5 class="mb-3">專案狀態分析</h5>
-                  <canvas id="statusChart" style="height:240px;"></canvas>
+                  <div class="chart-wrapper">
+                    <canvas id="statusChart"></canvas>
+                  </div>
               </div>
           </div>
           <div class="col-md-8 mb-3">
@@ -449,7 +454,7 @@
 
     function escapeHtml(str) {
       if (!str) return '';
-      return String(str).replace(/[&<>\"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":"&#39;"})[m]; });
+      return String(str).replace(/[&<>"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"})[m]; });
     }
 
     document.addEventListener('DOMContentLoaded', function () {
