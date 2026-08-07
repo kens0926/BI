@@ -1,582 +1,495 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<title>Internal Audit Dashboard</title>
-
-@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-https://cdn.jsdelivr.net/npm/frappe-gantt/dist/frappe-gantt.css
-
-<style>
-
-:root{
-    --primary:#2563EB;
-    --success:#22C55E;
-    --warning:#F59E0B;
-    --danger:#EF4444;
-    --sidebar:#0F172A;
-    --bg:#F1F5F9;
-}
-
-body{
-    background:var(--bg);
-    font-family:'Segoe UI',sans-serif;
-    overflow-x:hidden;
-}
-
-/* Sidebar */
-
-.sidebar{
-
-    position:fixed;
-    left:0;
-    top:0;
-
-    width:240px;
-    height:100vh;
-
-    background:var(--sidebar);
-    color:white;
-
-    padding-top:20px;
-}
-
-.logo{
-
-    font-size:28px;
-    font-weight:bold;
-
-    text-align:center;
-
-    margin-bottom:40px;
-}
-
-.menu-item{
-
-    padding:15px 25px;
-    cursor:pointer;
-
-    transition:.3s;
-}
-
-.menu-item:hover{
-
-    background:#1E293B;
-}
-
-.active-menu{
-
-    background:var(--primary);
-}
-
-/* Main */
-
-.main{
-
-    margin-left:240px;
-    padding:25px;
-}
-
-/* Header */
-
-.header{
-
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-
-    margin-bottom:20px;
-}
-
-.header-title{
-
-    font-size:28px;
-    font-weight:700;
-}
-
-.header-sub{
-
-    color:#64748B;
-}
-
-.profile{
-
-    background:white;
-    padding:10px 20px;
-    border-radius:50px;
-
-    box-shadow:0 2px 10px rgba(0,0,0,.06);
-}
-
-/* Card */
-
-.dashboard-card{
-
-    background:white;
-
-    border-radius:20px;
-
-    padding:20px;
-
-    box-shadow:
-    0 4px 20px rgba(0,0,0,.08);
-
-    transition:.3s;
-}
-
-.dashboard-card:hover{
-
-    transform:translateY(-3px);
-}
-
-.kpi{
-
-    display:flex;
-    align-items:center;
-    gap:15px;
-}
-
-.kpi-icon{
-
-    width:60px;
-    height:60px;
-
-    border-radius:50%;
-
-    display:flex;
-    align-items:center;
-    justify-content:center;
-
-    font-size:26px;
-}
-
-.bg-primary-soft{
-    background:#DBEAFE;
-}
-
-.bg-success-soft{
-    background:#DCFCE7;
-}
-
-.bg-warning-soft{
-    background:#FEF3C7;
-}
-
-.bg-danger-soft{
-    background:#FEE2E2;
-}
-
-.kpi h3{
-
-    margin:0;
-    font-size:30px;
-    font-weight:bold;
-}
-
-/* Form */
-
-.card-section{
-
-    background:white;
-
-    border-radius:20px;
-
-    padding:25px;
-
-    box-shadow:
-    0 4px 20px rgba(0,0,0,.08);
-}
-
-/* Table */
-
-.table{
-
-    vertical-align:middle;
-}
-
-.table thead{
-
-    background:#EFF6FF;
-}
-
-/* Badge */
-
-.status-running{
-
-    background:#DBEAFE;
-    color:#1D4ED8;
-
-    padding:5px 12px;
-    border-radius:20px;
-}
-
-.status-done{
-
-    background:#DCFCE7;
-    color:#15803D;
-
-    padding:5px 12px;
-    border-radius:20px;
-}
-
-.status-overdue{
-
-    background:#FEE2E2;
-    color:#DC2626;
-
-    padding:5px 12px;
-    border-radius:20px;
-}
-
-/* Progress */
-
-.progress{
-
-    height:10px;
-    border-radius:20px;
-}
-
-.progress-bar{
-
-    background:linear-gradient(
-            90deg,
-            #2563EB,
-            #60A5FA
-    );
-}
-
-/* Gantt */
-
-#gantt{
-
-    min-height:500px;
-    overflow:auto;
-}
-
-/* Chart */
-
-.chart-card{
-
-    background:white;
-
-    border-radius:20px;
-
-    padding:20px;
-
-    box-shadow:
-     0 4px 20px rgba(0,0,0,.08);
-}
-
-</style>
-
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Internal Audit Dashboard</title>
+
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <!-- Frappe Gantt CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/frappe-gantt/dist/frappe-gantt.css" rel="stylesheet">
+
+  <style>
+    :root{
+        --primary:#2563EB;
+        --success:#22C55E;
+        --warning:#F59E0B;
+        --danger:#EF4444;
+        --sidebar:#0F172A;
+        --bg:#F1F5F9;
+    }
+
+    body{
+        background:var(--bg);
+        font-family:'Segoe UI',sans-serif;
+        overflow-x:hidden;
+    }
+
+    /* Sidebar */
+    .sidebar{
+        position:fixed;
+        left:0;
+        top:0;
+        width:240px;
+        height:100vh;
+        background:var(--sidebar);
+        color:white;
+        padding-top:20px;
+    }
+
+    .logo{
+        font-size:28px;
+        font-weight:bold;
+        text-align:center;
+        margin-bottom:40px;
+    }
+
+    .menu-item{
+        padding:15px 25px;
+        cursor:pointer;
+        transition:.3s;
+    }
+
+    .menu-item:hover{
+        background:#1E293B;
+    }
+
+    .active-menu{
+        background:var(--primary);
+    }
+
+    /* Main */
+    .main{
+        margin-left:240px;
+        padding:25px;
+    }
+
+    /* Header */
+    .header{
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        margin-bottom:20px;
+    }
+
+    .header-title{
+        font-size:28px;
+        font-weight:700;
+    }
+
+    .header-sub{
+        color:#64748B;
+    }
+
+    .profile{
+        background:white;
+        padding:10px 20px;
+        border-radius:50px;
+        box-shadow:0 2px 10px rgba(0,0,0,.06);
+    }
+
+    /* KPI - horizontal */
+    .kpi-row{
+        display:flex;
+        gap:16px;
+        align-items:stretch;
+        overflow-x:auto;
+        padding-bottom:8px;
+    }
+
+    .kpi-card{
+        flex:1 0 200px; /* allow horizontal arrangement */
+        min-width:180px;
+        background:white;
+        border-radius:12px;
+        padding:14px;
+        box-shadow:0 4px 20px rgba(0,0,0,.06);
+        display:flex;
+        align-items:center;
+        gap:12px;
+    }
+
+    .kpi-icon{
+        width:56px;
+        height:56px;
+        border-radius:50%;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        font-size:22px;
+    }
+
+    .bg-primary-soft{ background:#DBEAFE; }
+    .bg-success-soft{ background:#DCFCE7; }
+    .bg-warning-soft{ background:#FEF3C7; }
+    .bg-danger-soft{ background:#FEE2E2; }
+
+    .kpi h3{ margin:0; font-size:22px; font-weight:bold; }
+    .kpi small{ color:#64748B; }
+
+    /* Card */
+    .dashboard-card{ /* kept for compatibility */ }
+
+    /* Form */
+    .card-section{
+        background:white;
+        border-radius:20px;
+        padding:25px;
+        box-shadow: 0 4px 20px rgba(0,0,0,.08);
+    }
+
+    /* Table */
+    .table{ vertical-align:middle; }
+    .table thead{ background:#EFF6FF; }
+
+    /* Badge */
+    .status-running{ background:#DBEAFE; color:#1D4ED8; padding:5px 12px; border-radius:20px; }
+    .status-done{ background:#DCFCE7; color:#15803D; padding:5px 12px; border-radius:20px; }
+    .status-overdue{ background:#FEE2E2; color:#DC2626; padding:5px 12px; border-radius:20px; }
+
+    /* Progress */
+    .progress{ height:10px; border-radius:20px; }
+    .progress-bar{ background:linear-gradient(90deg,#2563EB,#60A5FA); }
+
+    /* Gantt */
+    #gantt{ min-height:420px; overflow:auto; }
+
+    /* Chart */
+    .chart-card{ background:white; border-radius:20px; padding:20px; box-shadow: 0 4px 20px rgba(0,0,0,.08); }
+
+    /* Small screens adjustments */
+    @media (max-width: 767px) {
+      .sidebar { position:relative; width:100%; height:auto; }
+      .main { margin-left:0; padding:15px; }
+    }
+  </style>
 </head>
 
 <body>
 
-<div class="sidebar">
+  <div class="sidebar">
+      <div class="logo">IA</div>
+      <div class="menu-item active-menu">📊 Dashboard</div>
+      <div class="menu-item">📋 專案管理</div>
+      <div class="menu-item">✅ 缺失管理</div>
+      <div class="menu-item">📅 甘特圖</div>
+      <div class="menu-item">📈 統計報表</div>
+  </div>
 
-    <div class="logo">
-        IA
-    </div>
+  <div class="main">
+      <div class="header">
+          <div>
+              <div class="header-title">Internal Audit Dashboard</div>
+              <div class="header-sub">稽核任務與進度管理系統</div>
+          </div>
+          <div class="profile">👤 Auditor Manager</div>
+      </div>
 
-    <div class="menu-item active-menu">📊 Dashboard</div>
-    <div class="menu-item">📋 專案管理</div>
-    <div class="menu-item">✅ 缺失管理</div>
-    <div class="menu-item">📅 甘特圖</div>
-    <div class="menu-item">📈 統計報表</div>
-
-</div>
-
-<div class="main">
-
-    <div class="header">
-
-        <div>
-
-            <div class="header-title">
-                Internal Audit Dashboard
+      <!-- KPI (horizontal) -->
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="kpi-row" id="kpiRow">
+            <div class="kpi-card">
+              <div class="kpi-icon bg-primary-soft">📋</div>
+              <div class="kpi">
+                <h3 id="totalProjects">0</h3>
+                <small>總專案數</small>
+              </div>
             </div>
-
-            <div class="header-sub">
-                稽核任務與進度管理系統
+            <div class="kpi-card">
+              <div class="kpi-icon bg-warning-soft">⏳</div>
+              <div class="kpi">
+                <h3 id="running">0</h3>
+                <small>執行中</small>
+              </div>
             </div>
-
+            <div class="kpi-card">
+              <div class="kpi-icon bg-success-soft">✅</div>
+              <div class="kpi">
+                <h3 id="completed">0</h3>
+                <small>已完成</small>
+              </div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-icon bg-danger-soft">⚠️</div>
+              <div class="kpi">
+                <h3 id="overdue">0</h3>
+                <small>逾期</small>
+              </div>
+            </div>
+          </div>
         </div>
+      </div>
 
-        <div class="profile">
-            👤 Auditor Manager
-        </div>
+      <!-- 新增專案 -->
+      <div class="card-section mb-4">
 
-    </div>
+          <h5 class="mb-3">新增稽核專案</h5>
 
-    <!-- KPI -->
+          <div class="row g-2 align-items-center">
 
-    <div class="row mb-4">
+              <div class="col-md-2 col-6">
+                  <input id="projectNo" class="form-control" placeholder="專案編號">
+              </div>
 
-        <div class="col-md-3">
-            <div class="dashboard-card">
-                <div class="kpi">
-                    <div class="kpi-icon bg-primary-soft">📋</div>
-                    <div>
-                        <h3 id="totalProjects">0</h3>
-                        <small>總專案數</small>
-                    </div>
-                </div>
+              <div class="col-md-3 col-6">
+                  <input id="projectName" class="form-control" placeholder="專案名稱">
+              </div>
+
+              <div class="col-md-2 col-6">
+                  <input id="auditor" class="form-control" placeholder="稽核員">
+              </div>
+
+              <div class="col-md-2 col-6">
+                  <input id="startDate" type="date" class="form-control">
+              </div>
+
+              <div class="col-md-2 col-6">
+                  <input id="endDate" type="date" class="form-control">
+              </div>
+
+              <div class="col-md-1 col-6 d-grid">
+                  <button id="addBtn" class="btn btn-primary w-100">新增</button>
+              </div>
+
+              <div class="col-md-1 col-6 d-grid">
+                  <button id="exportCsv" class="btn btn-outline-secondary">匯出 CSV</button>
+              </div>
+
+          </div>
+
+      </div>
+
+      <!-- Chart + Gantt -->
+      <div class="row mb-4">
+          <div class="col-md-4 mb-3">
+              <div class="chart-card">
+                  <h5 class="mb-3">專案狀態分析</h5>
+                  <canvas id="statusChart" style="height:240px;"></canvas>
+              </div>
+          </div>
+          <div class="col-md-8 mb-3">
+              <div class="chart-card">
+                  <h5 class="mb-3">年度稽核甘特圖</h5>
+                  <div id="gantt"></div>
+              </div>
+          </div>
+      </div>
+
+      <!-- Table -->
+      <div class="card-section">
+          <h5 class="mb-3">稽核專案清單</h5>
+          <table class="table table-hover">
+              <thead>
+              <tr>
+                  <th>專案編號</th>
+                  <th>專案名稱</th>
+                  <th>稽核員</th>
+                  <th>進度</th>
+                  <th>狀態</th>
+                  <th>截止日</th>
+              </tr>
+              </thead>
+              <tbody id="projectTableBody">
+              <!-- rows populated by JS -->
+              </tbody>
+          </table>
+      </div>
+  </div>
+
+  <!-- Libraries (via CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/frappe-gantt/dist/frappe-gantt.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    const STORAGE_KEY = 'ia_projects_v1';
+
+    // default sample data
+    const DEFAULT_PROJECTS = [
+      { id: 'IA001', name: '資訊安全稽核', auditor: 'David', start: '2026-08-01', end: '2026-08-31', progress: 70 },
+      { id: 'IA002', name: 'ERP權限稽核', auditor: 'Amy', start: '2026-07-01', end: '2026-07-25', progress: 100 }
+    ];
+
+    let projects = [];
+    let chartInstance = null;
+    let ganttInstance = null;
+
+    function loadProjects() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          projects = JSON.parse(raw);
+        } else {
+          projects = DEFAULT_PROJECTS.slice();
+          saveProjects();
+        }
+      } catch (e) {
+        console.error('loadProjects error', e);
+        projects = DEFAULT_PROJECTS.slice();
+      }
+    }
+
+    function saveProjects() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+    }
+
+    function renderProjects() {
+      const tbody = document.getElementById('projectTableBody');
+      tbody.innerHTML = '';
+      projects.forEach(p => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${escapeHtml(p.id)}</td>
+          <td>${escapeHtml(p.name)}</td>
+          <td>${escapeHtml(p.auditor || '')}</td>
+          <td>
+            <div class="progress">
+              <div class="progress-bar" role="progressbar" style="width:${p.progress}%"></div>
             </div>
-        </div>
-
-        <div class="col-md-3">
-            <div class="dashboard-card">
-                <div class="kpi">
-                    <div class="kpi-icon bg-warning-soft">⏳</div>
-                    <div>
-                        <h3 id="running">0</h3>
-                        <small>執行中</small>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-3">
-            <div class="dashboard-card">
-                <div class="kpi">
-                    <div class="kpi-icon bg-success-soft">✅</div>
-                    <div>
-                        <h3 id="completed">0</h3>
-                        <small>已完成</small>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-3">
-            <div class="dashboard-card">
-                <div class="kpi">
-                    <div class="kpi-icon bg-danger-soft">⚠️</div>
-                    <div>
-                        <h3 id="overdue">0</h3>
-                        <small>逾期</small>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-    </div>
-
-    <!-- 新增專案 -->
-
-    <div class="card-section mb-4">
-
-        <h5 class="mb-3">新增稽核專案</h5>
-
-        <div class="row g-2">
-
-            <div class="col-md-2">
-                <input id="projectNo" class="form-control" placeholder="專案編號">
-            </div>
-
-            <div class="col-md-3">
-                <input id="projectName" class="form-control" placeholder="專案名稱">
-            </div>
-
-            <div class="col-md-2">
-                <input id="auditor" class="form-control" placeholder="稽核員">
-            </div>
-
-            <div class="col-md-2">
-                <input id="startDate" type="date" class="form-control">
-            </div>
-
-            <div class="col-md-2">
-                <input id="endDate" type="date" class="form-control">
-            </div>
-
-            <div class="col-md-1">
-                <button class="btn btn-primary w-100">
-                    新增
-                </button>
-            </div>
-
-        </div>
-
-    </div>
-
-    <!-- Chart + Gantt -->
-
-    <div class="row mb-4">
-
-        <div class="col-md-4">
-
-            <div class="chart-card">
-
-                <h5 class="mb-3">
-                    專案狀態分析
-                </h5>
-
-                <canvas id="statusChart"></canvas>
-
-            </div>
-
-        </div>
-
-        <div class="col-md-8">
-
-            <div class="chart-card">
-
-                <h5 class="mb-3">
-                    年度稽核甘特圖
-                </h5>
-
-                <div id="gantt"></div>
-
-            </div>
-
-        </div>
-
-    </div>
-
-    <!-- Table -->
-
-    <div class="card-section">
-
-        <h5 class="mb-3">
-            稽核專案清單
-        </h5>
-
-        <table class="table table-hover">
-
-            <thead>
-
-            <tr>
-                <th>專案編號</th>
-                <th>專案名稱</th>
-                <th>稽核員</th>
-                <th>進度</th>
-                <th>狀態</th>
-                <th>截止日</th>
-            </tr>
-
-            </thead>
-
-            <tbody>
-
-            <tr>
-
-                <td>IA001</td>
-
-                <td>資訊安全稽核</td>
-
-                <td>David</td>
-
-                <td width="250">
-
-                    <div class="progress">
-                        <div class="progress-bar"
-                             style="width:70%">
-                        </div>
-                    </div>
-
-                    <small>70%</small>
-
-                </td>
-
-                <td>
-                    <span class="status-running">
-                        進行中
-                    </span>
-                </td>
-
-                <td>
-                    2026-08-31
-                </td>
-
-            </tr>
-
-            <tr>
-
-                <td>IA002</td>
-
-                <td>ERP權限稽核</td>
-
-                <td>Amy</td>
-
-                <td>
-
-                    <div class="progress">
-                        <div class="progress-bar"
-                             style="width:100%">
-                        </div>
-                    </div>
-
-                    <small>100%</small>
-
-                </td>
-
-                <td>
-                    <span class="status-done">
-                        已完成
-                    </span>
-                </td>
-
-                <td>
-                    2026-07-25
-                </td>
-
-            </tr>
-
-            </tbody>
-
-        </table>
-
-    </div>
-
-</div>
-
-https://cdn.jsdelivr.net/npm/chart.js
-https://cdn.jsdelivr.net/npm/frappe-gantt/dist/frappe-gantt.umd.js
-
-<script>
-
-new Chart(
-document.getElementById("statusChart"),
-{
-type:"doughnut",
-
-data:{
-labels:["已完成","執行中","逾期"],
-datasets:[{
-data:[12,8,3],
-backgroundColor:[
-"#22C55E",
-"#2563EB",
-"#EF4444"
-]
-}]
-}
-});
-
-const tasks = [
-{
-id:"1",
-name:"資訊安全稽核",
-start:"2026-08-01",
-end:"2026-08-31",
-progress:70
-},
-{
-id:"2",
-name:"ERP權限稽核",
-start:"2026-07-01",
-end:"2026-07-25",
-progress:100
-}
-];
-
-new Gantt("#gantt",tasks);
-
-</script>
-
+            <small>${p.progress}%</small>
+          </td>
+          <td>${statusBadge(p)}</td>
+          <td>${escapeHtml(p.end || '')}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+      updateKPIs();
+      updateChart();
+      updateGantt();
+    }
+
+    function statusBadge(p) {
+      const now = new Date();
+      const end = p.end ? new Date(p.end) : null;
+      if (p.progress >= 100) return '<span class="status-done">已完成</span>';
+      if (end && !isNaN(end) && end < now) return '<span class="status-overdue">逾期</span>';
+      return '<span class="status-running">進行中</span>';
+    }
+
+    function updateKPIs() {
+      const total = projects.length;
+      const completed = projects.filter(p => p.progress >= 100).length;
+      const running = projects.filter(p => p.progress < 100 && !(p.end && new Date(p.end) < new Date())).length;
+      const overdue = projects.filter(p => p.progress < 100 && p.end && new Date(p.end) < new Date()).length;
+      document.getElementById('totalProjects').textContent = total;
+      document.getElementById('completed').textContent = completed;
+      document.getElementById('running').textContent = running;
+      document.getElementById('overdue').textContent = overdue;
+    }
+
+    function updateChart() {
+      const completed = projects.filter(p => p.progress >= 100).length;
+      const running = projects.filter(p => p.progress < 100 && !(p.end && new Date(p.end) < new Date())).length;
+      const overdue = projects.filter(p => p.progress < 100 && p.end && new Date(p.end) < new Date()).length;
+      const data = [completed, running, overdue];
+      if (chartInstance) {
+        chartInstance.data.datasets[0].data = data;
+        chartInstance.update();
+      }
+    }
+
+    function updateGantt() {
+      const tasks = projects.map(p => ({ id: p.id, name: p.name, start: p.start || p.end || new Date().toISOString().slice(0,10), end: p.end || p.start || new Date().toISOString().slice(0,10), progress: p.progress || 0 }));
+      try {
+        if (ganttInstance && ganttInstance.refresh) {
+          // frappe-gantt doesn't provide a standard refresh in all builds; recreate instead
+          document.getElementById('gantt').innerHTML = '';
+          ganttInstance = new Gantt('#gantt', tasks, { on_click: function(task){console.log('task',task);} });
+        } else {
+          // first time
+          document.getElementById('gantt').innerHTML = '';
+          ganttInstance = new Gantt('#gantt', tasks, { on_click: function(task){console.log('task',task);} });
+        }
+      } catch (e) {
+        console.warn('Gantt init failed', e);
+      }
+    }
+
+    function addProjectFromForm() {
+      const no = document.getElementById('projectNo').value.trim() || `P${Date.now()}`;
+      const name = document.getElementById('projectName').value.trim() || '未命名';
+      const auditor = document.getElementById('auditor').value.trim() || '';
+      const start = document.getElementById('startDate').value || '';
+      const end = document.getElementById('endDate').value || '';
+      // default progress 0
+      const progress = 0;
+      // add to projects
+      projects.push({ id: no, name, auditor, start, end, progress });
+      saveProjects();
+      renderProjects();
+
+      // clear inputs
+      document.getElementById('projectNo').value = '';
+      document.getElementById('projectName').value = '';
+      document.getElementById('auditor').value = '';
+      document.getElementById('startDate').value = '';
+      document.getElementById('endDate').value = '';
+    }
+
+    function exportCsv() {
+      if (!projects || projects.length === 0) {
+        alert('沒有專案可匯出');
+        return;
+      }
+      const headers = ['專案編號','專案名稱','稽核員','開始日','截止日','進度'];
+      const rows = projects.map(p => [p.id, p.name, p.auditor || '', p.start || '', p.end || '', p.progress || 0]);
+      const csv = [headers].concat(rows).map(r => r.map(cell => '"' + String(cell).replace(/"/g,'""') + '"').join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'ia_projects.csv';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 500);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/[&<>\"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":"&#39;"})[m]; });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+      // load
+      loadProjects();
+
+      // init chart
+      const ctx = document.getElementById('statusChart');
+      if (ctx) {
+        chartInstance = new Chart(ctx, {
+          type: 'doughnut',
+          data: {
+            labels: ['已完成','執行中','逾期'],
+            datasets: [{ data: [0,0,0], backgroundColor: ['#22C55E','#2563EB','#EF4444'] }]
+          },
+          options: { maintainAspectRatio: false, responsive: true }
+        });
+      }
+
+      // render table, KPI, chart, gantt
+      renderProjects();
+
+      // add handlers
+      document.getElementById('addBtn').addEventListener('click', function(e){ e.preventDefault(); addProjectFromForm(); });
+      document.getElementById('exportCsv').addEventListener('click', function(e){ e.preventDefault(); exportCsv(); });
+
+      // optional: allow double-click on table row to remove project (confirm)
+      document.getElementById('projectTableBody').addEventListener('dblclick', function(e){
+        const tr = e.target.closest('tr');
+        if (!tr) return;
+        const id = tr.cells[0] ? tr.cells[0].textContent.trim() : null;
+        if (!id) return;
+        if (confirm('確定要刪除專案 ' + id + ' 嗎？')) {
+          projects = projects.filter(p => p.id !== id);
+          saveProjects();
+          renderProjects();
+        }
+      });
+
+    });
+  </script>
 </body>
 </html>
