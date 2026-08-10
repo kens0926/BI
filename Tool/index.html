@@ -54,6 +54,11 @@
     .gantt-fullscreen-btn, .gantt-close-btn { background:none; border:1px solid #ccc; color:#666; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:13px; transition:all 0.2s; }
     .gantt-fullscreen-btn:hover { background:#2563eb; color:#fff; border-color:#2563eb; }
     .gantt-close-btn:hover { background:#dc2626; color:#fff; border-color:#dc2626; }
+    #csvFileInput { display:none; }
+    .import-result { padding:12px 16px; border-radius:8px; margin-top:12px; font-size:14px; }
+    .import-success { background:#dcfce7; color:#166534; border:1px solid #bbf7d0; }
+    .import-error { background:#fee2e2; color:#991b1b; border:1px solid #fecaca; }
+    .import-warning { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
     @media (max-width:767px) { .sidebar { position:relative; width:100%; height:auto; transition:none; } .sidebar.collapsed { width:100%; } .collapse-btn { display:none; } .main { margin-left:0; padding:15px; transition:none; } .main.expanded { margin-left:0; } .main.fullscreen-gantt { padding:0; } .header { align-items:flex-start; gap:12px; flex-direction:column; } }
   </style>
 </head>
@@ -87,7 +92,10 @@
         <div class="col-md-2 col-6"><input id="endDate" type="date" class="form-control" aria-label="結束日期"></div>
         <div class="col-md-1 col-6 d-grid"><button id="addBtn" class="btn btn-primary">新增</button></div>
         <div class="col-md-1 col-6 d-grid"><button id="exportCsv" class="btn btn-outline-secondary">匯出 CSV</button></div>
+        <div class="col-md-1 col-6 d-grid"><button id="importBtn" class="btn btn-outline-info">匯入 CSV</button></div>
       </div>
+      <div id="importResult"></div>
+      <input type="file" id="csvFileInput" accept=".csv" />
     </section>
     <section class="row mb-4 analytics-row">
       <div class="col-md-4 mb-3"><div class="chart-card analytics-card"><h5 class="mb-3">專案狀態分析</h5><div class="chart-wrapper"><canvas id="statusChart"></canvas></div></div></div>
@@ -170,6 +178,87 @@
       }
     }
     
+    function showImportResult(message, type) {
+      const resultDiv = byId('importResult');
+      resultDiv.innerHTML = `<div class="import-result import-${type}">${escapeHtml(message)}</div>`;
+      setTimeout(() => { resultDiv.innerHTML = ''; }, 5000);
+    }
+    
+    function parseCSV(text) {
+      const lines = text.trim().split('\n');
+      if (lines.length < 2) return { data: [], errors: ['CSV檔案格式錯誤：至少需要標題列和資料列'] };
+      
+      const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+      const requiredHeaders = ['專案編號', '專案名稱', '分類', '稽核人員', '開始日期', '結束日期', '進度'];
+      const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
+      if (missingHeaders.length > 0) {
+        return { data: [], errors: [`缺少必要欄位：${missingHeaders.join(', ')}`] };
+      }
+      
+      const data = [], errors = [];
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+        if (values.length < requiredHeaders.length) continue;
+        
+        const row = {};
+        headers.forEach((h, idx) => { row[h] = values[idx] || ''; });
+        
+        if (!row['專案編號']) { errors.push(`第 ${i+1} 列：缺少專案編號`); continue; }
+        if (!row['專案名稱']) { errors.push(`第 ${i+1} 列：缺少專案名稱`); continue; }
+        
+        const progress = parseInt(row['進度']) || 0;
+        if (isNaN(progress) || progress < 0 || progress > 100) { errors.push(`第 ${i+1} 列：進度必須為 0-100 的數字`); continue; }
+        
+        data.push({
+          id: row['專案編號'],
+          name: row['專案名稱'],
+          category: row['分類'] || '內部稽核',
+          auditor: row['稽核人員'] || '',
+          start: row['開始日期'] || '',
+          end: row['結束日期'] || '',
+          progress: progress
+        });
+      }
+      
+      return { data, errors };
+    }
+    
+    function importCSV(file) {
+      const reader = new FileReader();
+      reader.onload = e => {
+        const text = e.target.result;
+        const { data, errors } = parseCSV(text);
+        
+        if (errors.length > 0) {
+          showImportResult(`❌ 匯入失敗\n${errors.join('\n')}`, 'error');
+          return;
+        }
+        
+        if (data.length === 0) {
+          showImportResult('⚠️ 沒有有效的資料可匯入', 'warning');
+          return;
+        }
+        
+        let added = 0, skipped = 0;
+        data.forEach(newProject => {
+          if (projects.some(p => p.id === newProject.id)) {
+            skipped++;
+          } else {
+            projects.push(newProject);
+            added++;
+          }
+        });
+        
+        saveProjects();
+        renderProjects();
+        
+        let message = `✅ 匯入成功！新增 ${added} 個專案`;
+        if (skipped > 0) message += `，跳過 ${skipped} 個重複專案`;
+        showImportResult(message, 'success');
+      };
+      reader.readAsText(file);
+    }
+    
     function loadProjects() { try { projects = JSON.parse(localStorage.getItem(STORAGE_KEY)) || DEFAULT_PROJECTS; } catch { projects = DEFAULT_PROJECTS; } saveProjects(); }
     function saveProjects() { localStorage.setItem(STORAGE_KEY, JSON.stringify(projects)); }
     function statusBadge(project) { if (project.progress >= 100) return '<span class="status-done">已完成</span>'; if (isOverdue(project)) return '<span class="status-overdue">逾期</span>'; return '<span class="status-running">進行中</span>'; }
@@ -186,7 +275,7 @@
     function openEditProject(id) { const p=projects.find(item=>item.id===id); if (!p) return; byId('editOriginalId').value=p.id; byId('editProjectNo').value=p.id; byId('editProjectName').value=p.name; byId('editCategory').value=p.category||'內部稽核'; byId('editAuditor').value=p.auditor||''; byId('editStartDate').value=p.start||''; byId('editEndDate').value=p.end||''; byId('editProgress').value=p.progress||0; new bootstrap.Modal(byId('editProjectModal')).show(); }
     function saveEditedProject() { const oldId=byId('editOriginalId').value, id=byId('editProjectNo').value.trim(), name=byId('editProjectName').value.trim(), progress=Math.max(0,Math.min(100,Number(byId('editProgress').value)||0)); if (!name) { alert('Please enter a project name.'); return; } const p=projects.find(item=>item.id===oldId); if (!p) return; if (id!==oldId && projects.some(item=>item.id===id)) { alert('Project ID already exists.'); return; } p.id=id; p.name=name; p.category=byId('editCategory').value; p.auditor=byId('editAuditor').value; p.start=byId('editStartDate').value; p.end=byId('editEndDate').value; p.progress=progress; saveProjects(); renderProjects(); bootstrap.Modal.getInstance(byId('editProjectModal')).hide(); }
     function exportCsv() { const rows=[['專案編號','專案名稱','分類','稽核人員','開始日期','結束日期','進度'],...projects.map(p=>[p.id,p.name,p.category||'內部稽核',p.auditor||'',p.start||'',p.end||'',p.progress])], csv=rows.map(r=>r.map(cell=>`"${String(cell).replace(/"/g,'""')}"`).join(',')).join('\n'), blob=new Blob([csv],{type:'text/csv'}), url=URL.createObjectURL(blob), link=document.createElement('a'); link.href=url; link.download='audit_projects.csv'; link.click(); URL.revokeObjectURL(url); }
-    document.addEventListener('DOMContentLoaded', () => { loadProjects(); restoreSidebarState(); byId('collapseBtn').addEventListener('click', toggleSidebar); byId('ganttFullscreenBtn').addEventListener('click', toggleGanttFullscreen); byId('ganttCloseBtn').addEventListener('click', toggleGanttFullscreen); document.addEventListener('keydown', e => { if (e.key === 'Escape' && byId('ganttFullscreen').classList.contains('active')) toggleGanttFullscreen(); }); chartInstance=new Chart(byId('statusChart'),{type:'doughnut',data:{labels:['Completed','In progress','Overdue'],datasets:[{data:[0,0,0],backgroundColor:['#dcfce7','#dbeafe','#fee2e2'],borderColor:'#fff',borderWidth:2}]},options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{position:'bottom'}}}}); renderProjects(); byId('addBtn').addEventListener('click',addProject); byId('exportCsv').addEventListener('click',exportCsv); byId('editProjectForm').addEventListener('submit',e=>{e.preventDefault(); saveEditedProject();}); });
+    document.addEventListener('DOMContentLoaded', () => { loadProjects(); restoreSidebarState(); byId('collapseBtn').addEventListener('click', toggleSidebar); byId('ganttFullscreenBtn').addEventListener('click', toggleGanttFullscreen); byId('ganttCloseBtn').addEventListener('click', toggleGanttFullscreen); document.addEventListener('keydown', e => { if (e.key === 'Escape' && byId('ganttFullscreen').classList.contains('active')) toggleGanttFullscreen(); }); byId('importBtn').addEventListener('click', () => byId('csvFileInput').click()); byId('csvFileInput').addEventListener('change', e => { if (e.target.files.length > 0) importCSV(e.target.files[0]); e.target.value = ''; }); chartInstance=new Chart(byId('statusChart'),{type:'doughnut',data:{labels:['Completed','In progress','Overdue'],datasets:[{data:[0,0,0],backgroundColor:['#dcfce7','#dbeafe','#fee2e2'],borderColor:'#fff',borderWidth:2}]},options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{position:'bottom'}}}}); renderProjects(); byId('addBtn').addEventListener('click',addProject); byId('exportCsv').addEventListener('click',exportCsv); byId('editProjectForm').addEventListener('submit',e=>{e.preventDefault(); saveEditedProject();}); });
   </script>
 </body>
 </html>
