@@ -23,13 +23,23 @@
     .collapse-btn:hover { transform:scale(1.2); }
     .main { margin-left:240px; padding:25px; transition:margin-left 0.3s ease; }
     .main.expanded { margin-left:70px; }
+    .main.fullscreen-gantt { margin-left:0; padding:0; }
     .header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
     .header-title { font-size:28px; font-weight:700; }
     .header-sub { color:#64748b; }
     .profile,.card-section { background:#fff; box-shadow:0 4px 20px rgba(0,0,0,.08); }
     .profile { padding:10px 20px; border-radius:50px; }
     .card-section { padding:22px; border-radius:20px; }
+    .gantt-section { position:relative; }
+    .gantt-controls { position:absolute; top:12px; right:12px; z-index:10; display:flex; gap:8px; }
     #gantt { min-height:420px; overflow:auto; }
+    #ganttFullscreen { position:fixed; inset:0; background:#fff; z-index:2000; display:none; flex-direction:column; }
+    #ganttFullscreen.active { display:flex; }
+    #ganttFullscreenHeader { display:flex; justify-content:space-between; align-items:center; padding:16px 24px; background:#f8f9fa; border-bottom:1px solid #dee2e6; }
+    #ganttFullscreenContent { flex:1; overflow:auto; padding:20px; }
+    .gantt-fullscreen-btn, .gantt-close-btn { background:none; border:1px solid #ccc; color:#666; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:13px; transition:all 0.2s; }
+    .gantt-fullscreen-btn:hover { background:#2563eb; color:#fff; border-color:#2563eb; }
+    .gantt-close-btn:hover { background:#dc2626; color:#fff; border-color:#dc2626; }
     .table { vertical-align:middle; }
     .table thead { background:#eff6ff; }
     .project-summary { padding:14px 16px; border-radius:12px; background:#eff6ff; color:#1e3a8a; }
@@ -37,7 +47,7 @@
     .status-not-started { background:#e2e8f0; color:#334155; }
     .status-running { background:#dbeafe; color:#1d4ed8; }
     .status-done { background:#dcfce7; color:#15803d; }
-    @media (max-width:767px) { .sidebar { position:relative; width:100%; height:auto; transition:none; } .sidebar.collapsed { width:100%; } .collapse-btn { display:none; } .main { margin-left:0; padding:15px; transition:none; } .main.expanded { margin-left:0; } .header { align-items:flex-start; flex-direction:column; gap:10px; } }
+    @media (max-width:767px) { .sidebar { position:relative; width:100%; height:auto; transition:none; } .sidebar.collapsed { width:100%; } .collapse-btn { display:none; } .main { margin-left:0; padding:15px; transition:none; } .main.expanded { margin-left:0; } .main.fullscreen-gantt { padding:0; } .header { align-items:flex-start; flex-direction:column; gap:10px; } }
   </style>
 </head>
 <body>
@@ -74,12 +84,35 @@
       <h5 class="mb-3">細部時程清單</h5>
       <div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>工作項目</th><th>負責人</th><th>開始日期</th><th>結束日期</th><th>進度</th><th>狀態</th><th class="text-end">操作</th></tr></thead><tbody id="scheduleTableBody"></tbody></table></div>
     </section>
-    <section class="card-section"><h5 class="mb-3">稽核甘特圖</h5><div id="gantt"></div></section>
+    <section class="card-section gantt-section">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0">稽核甘特圖</h5>
+        <div class="gantt-controls">
+          <button id="ganttFullscreenBtn" class="gantt-fullscreen-btn" title="放大至整頁">🔍 放大</button>
+        </div>
+      </div>
+      <div id="gantt"></div>
+    </section>
   </main>
+
+  <!-- 全屏甘特圖模態 -->
+  <div id="ganttFullscreen">
+    <div id="ganttFullscreenHeader">
+      <div>
+        <h4 class="mb-0">稽核甘特圖 - 全屏模式</h4>
+        <small class="text-muted">選擇稽核專案：<span id="ganttProjectName"></span></small>
+      </div>
+      <button id="ganttCloseBtn" class="gantt-close-btn" title="關閉全屏">✕ 關閉</button>
+    </div>
+    <div id="ganttFullscreenContent">
+      <div id="ganttFullscreenChart"></div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/frappe-gantt/dist/frappe-gantt.umd.min.js"></script>
   <script>
     const PROJECT_KEY = 'ia_projects_v1', SCHEDULE_KEY = 'ia_project_schedules_v1', SIDEBAR_STATE_KEY = 'ia_sidebar_collapsed';
-    let projects = [], schedules = [], selectedProjectId = '', editingTaskId = '';
+    let projects = [], schedules = [], selectedProjectId = '', editingTaskId = '', ganttInstance = null, ganttFullscreenInstance = null;
     const byId = id => document.getElementById(id);
     const escapeHtml = value => String(value || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
     
@@ -102,6 +135,18 @@
       }
     }
     
+    function toggleGanttFullscreen() {
+      const fullscreenDiv = byId('ganttFullscreen');
+      fullscreenDiv.classList.toggle('active');
+      if (fullscreenDiv.classList.contains('active')) {
+        byId('main').classList.add('fullscreen-gantt');
+        renderGanttFullscreen();
+      } else {
+        byId('main').classList.remove('fullscreen-gantt');
+        if (ganttFullscreenInstance) ganttFullscreenInstance = null;
+      }
+    }
+    
     function loadData() { try { projects = JSON.parse(localStorage.getItem(PROJECT_KEY)) || []; schedules = JSON.parse(localStorage.getItem(SCHEDULE_KEY)) || []; } catch { projects=[]; schedules=[]; } }
     function saveSchedules() { localStorage.setItem(SCHEDULE_KEY, JSON.stringify(schedules)); }
     function selectedProject() { return projects.find(p => p.id === selectedProjectId); }
@@ -115,13 +160,14 @@
     }
     function renderSummary() { const p=selectedProject(); byId('projectSummary').textContent = p ? `分類：${p.category || '內部稽核'}　｜　稽核人員：${p.auditor || '未指派'}　｜　期間：${p.start || '未設定'}～${p.end || '未設定'}` : '請選擇專案。'; }
     function renderTable() { const tasks=projectTasks(); byId('scheduleTableBody').innerHTML=tasks.length ? tasks.map(t=>`<tr><td>${escapeHtml(t.name)}</td><td>${escapeHtml(t.owner)}</td><td>${t.start||'-'}</td><td>${t.end||'-'}</td><td><div class="progress"><div class="progress-bar" style="width:${t.progress||0}%"></div></div></td><td><span class="status ${t.progress>=100?'status-done':t.progress>0?'status-running':'status-not-started'}">${t.progress>=100?'已完成':t.progress>0?'進行中':'未開始'}</span></td><td class="text-end"><button class="btn btn-sm btn-outline-primary" onclick="editTask('${escapeHtml(t.id)}')">編輯</button> <button class="btn btn-sm btn-outline-danger" onclick="deleteTask('${escapeHtml(t.id)}')">刪除</button></td></tr>`).join('') : '<tr><td colspan="7" class="text-center text-secondary py-3">尚無工作項目</td></tr>'; }
-    function renderGantt() { const container=byId('gantt'), tasks=projectTasks(); container.innerHTML=''; if (!tasks.length) { container.innerHTML='<div class="text-secondary py-5 text-center">新增時程後會顯示甘特圖</div>'; return; } const ganttTasks=tasks.map(t=>({id:t.id,name:t.name,start:t.start||t.end||new Date().toISOString().slice(0,10),end:t.end||t.start||new Date().toISOString().slice(0,10),progress:t.progress||0})); new Gantt(container,ganttTasks,{on_click:task=>{},on_date_change:(task,start,end)=>{},on_progress_update:(task,progress)=>{},view_mode:'Month',bar_corner_radius:4}); }
+    function renderGantt() { const container=byId('gantt'), tasks=projectTasks(); container.innerHTML=''; if (!tasks.length) { container.innerHTML='<div class="text-secondary py-5 text-center">新增時程後會顯示甘特圖</div>'; ganttInstance=null; return; } const ganttTasks=tasks.map(t=>({id:t.id,name:t.name,start:t.start||t.end||new Date().toISOString().slice(0,10),end:t.end||t.start||new Date().toISOString().slice(0,10),progress:t.progress||0})); ganttInstance=new Gantt(container,ganttTasks,{on_click:task=>{},on_date_change:(task,start,end)=>{},on_progress_update:(task,progress)=>{},view_mode:'Month',bar_corner_radius:4}); }
+    function renderGanttFullscreen() { const container=byId('ganttFullscreenChart'), tasks=projectTasks(); const p=selectedProject(); byId('ganttProjectName').textContent=p?p.name:'未選擇'; container.innerHTML=''; if (!tasks.length) { container.innerHTML='<div class="text-secondary py-5 text-center">尚無工作項目</div>'; return; } const ganttTasks=tasks.map(t=>({id:t.id,name:t.name,start:t.start||t.end||new Date().toISOString().slice(0,10),end:t.end||t.start||new Date().toISOString().slice(0,10),progress:t.progress||0})); ganttFullscreenInstance=new Gantt(container,ganttTasks,{on_click:task=>{},on_date_change:(task,start,end)=>{},on_progress_update:(task,progress)=>{},view_mode:'Month',bar_corner_radius:4}); }
     function render() { renderSummary(); renderTable(); renderGantt(); }
     function resetForm() { editingTaskId=''; byId('scheduleForm').reset(); byId('taskProgress').value=0; byId('saveTaskBtn').textContent='新增時程'; byId('cancelEditBtn').classList.add('d-none'); }
     function editTask(id) { const task=schedules.find(t=>t.id===id); if (!task) return; editingTaskId=id; byId('taskName').value=task.name; byId('taskOwner').value=task.owner||''; byId('taskStart').value=task.start||''; byId('taskEnd').value=task.end||''; byId('taskProgress').value=task.progress||0; byId('saveTaskBtn').textContent='保存修改'; byId('cancelEditBtn').classList.remove('d-none'); }
     function deleteTask(id) { if (!confirm('確定刪除此工作項目？')) return; schedules=schedules.filter(t=>t.id!==id); saveSchedules(); render(); }
     function saveTask(event) { event.preventDefault(); if (!selectedProjectId) return; const start=byId('taskStart').value,end=byId('taskEnd').value; if (end < start) { alert('結束日期不可早於開始日期'); return; } if (editingTaskId) { const task=schedules.find(t=>t.id===editingTaskId); if (task) { task.name=byId('taskName').value; task.owner=byId('taskOwner').value; task.start=start; task.end=end; task.progress=Math.max(0,Math.min(100,Number(byId('taskProgress').value)||0)); } resetForm(); } else { schedules.push({id:`task_${Date.now()}`,projectId:selectedProjectId,name:byId('taskName').value,owner:byId('taskOwner').value,start:start,end:end,progress:Math.max(0,Math.min(100,Number(byId('taskProgress').value)||0))}); resetForm(); } saveSchedules(); render(); }
-    document.addEventListener('DOMContentLoaded',()=>{ loadData(); restoreSidebarState(); byId('collapseBtn').addEventListener('click', toggleSidebar); renderProjectOptions(); render(); byId('projectSelect').addEventListener('change',e=>{selectedProjectId=e.target.value; resetForm(); render();}); byId('scheduleForm').addEventListener('submit',saveTask); byId('cancelEditBtn').addEventListener('click',()=>{resetForm();render();}); });
+    document.addEventListener('DOMContentLoaded',()=>{ loadData(); restoreSidebarState(); byId('collapseBtn').addEventListener('click', toggleSidebar); byId('ganttFullscreenBtn').addEventListener('click', toggleGanttFullscreen); byId('ganttCloseBtn').addEventListener('click', toggleGanttFullscreen); document.addEventListener('keydown', e => { if (e.key === 'Escape' && byId('ganttFullscreen').classList.contains('active')) toggleGanttFullscreen(); }); renderProjectOptions(); render(); byId('projectSelect').addEventListener('change',e=>{selectedProjectId=e.target.value; resetForm(); render();}); byId('scheduleForm').addEventListener('submit',saveTask); byId('cancelEditBtn').addEventListener('click',()=>{resetForm();render();}); });
   </script>
 </body>
 </html>
