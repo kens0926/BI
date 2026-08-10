@@ -14,7 +14,7 @@
     .logo { padding:0 25px 28px; font-weight:700; font-size:26px; white-space:nowrap; overflow:hidden; }
     .sidebar.collapsed .logo { font-size:20px; padding:0 15px 28px; }
     .sidebar.collapsed .menu-text { display:none; }
-    .menu-item { padding:14px 25px; cursor:pointer; display:flex; align-items:center; gap:10px; transition:background 0.2s; }
+    .menu-item { padding:14px 25px; display:flex; align-items:center; gap:10px; cursor:pointer; transition:background 0.2s; }
     .sidebar.collapsed .menu-item { padding:14px 12px; justify-content:center; }
     .menu-item:hover { background:#1e293b; }
     .active-menu { background:var(--primary); }
@@ -23,6 +23,7 @@
     .collapse-btn:hover { transform:scale(1.2); }
     .main { margin-left:240px; padding:25px; transition:margin-left 0.3s ease; }
     .main.expanded { margin-left:70px; }
+    .main.fullscreen-gantt { margin-left:0; padding:0; }
     .header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
     .header-title { font-size:28px; font-weight:700; }
     .header-sub { color:#64748b; }
@@ -35,16 +36,25 @@
     .bg-warning-soft { background:#fef3c7; } .bg-danger-soft { background:#fee2e2; }
     .kpi h3 { margin:0; font-size:22px; font-weight:700; } .kpi small { color:#64748b; }
     .card-section, .chart-card { border-radius:20px; padding:20px; }
+    .gantt-section { position:relative; }
+    .gantt-controls { position:absolute; top:0; right:0; z-index:10; display:flex; gap:8px; }
     .table { vertical-align:middle; } .table thead { background:#eff6ff; }
     .status-running, .status-done, .status-overdue { display:inline-block; padding:5px 12px; border-radius:20px; }
     .status-running { color:#1d4ed8; background:#dbeafe; } .status-done { color:#15803d; background:#dcfce7; }
     .status-overdue { color:#dc2626; background:#fee2e2; }
     .progress { height:10px; border-radius:20px; } .progress-bar { background:linear-gradient(90deg,#2563eb,#60a5fa); }
     .analytics-row > [class*="col-"] { display:flex; }
-    .analytics-card { width:100%; height:390px; display:flex; flex-direction:column; }
+    .analytics-card { width:100%; height:390px; display:flex; flex-direction:column; position:relative; }
     .chart-wrapper, #gantt { flex:1; min-height:0; overflow:auto; }
     .chart-wrapper canvas { width:100% !important; height:100% !important; display:block; }
-    @media (max-width:767px) { .sidebar { position:relative; width:100%; height:auto; transition:none; } .sidebar.collapsed { width:100%; } .collapse-btn { display:none; } .main { margin-left:0; padding:15px; transition:none; } .main.expanded { margin-left:0; } .header { align-items:flex-start; gap:12px; flex-direction:column; } }
+    #ganttFullscreen { position:fixed; inset:0; background:#fff; z-index:2000; display:none; flex-direction:column; }
+    #ganttFullscreen.active { display:flex; }
+    #ganttFullscreenHeader { display:flex; justify-content:space-between; align-items:center; padding:16px 24px; background:#f8f9fa; border-bottom:1px solid #dee2e6; }
+    #ganttFullscreenContent { flex:1; overflow:auto; padding:20px; }
+    .gantt-fullscreen-btn, .gantt-close-btn { background:none; border:1px solid #ccc; color:#666; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:13px; transition:all 0.2s; }
+    .gantt-fullscreen-btn:hover { background:#2563eb; color:#fff; border-color:#2563eb; }
+    .gantt-close-btn:hover { background:#dc2626; color:#fff; border-color:#dc2626; }
+    @media (max-width:767px) { .sidebar { position:relative; width:100%; height:auto; transition:none; } .sidebar.collapsed { width:100%; } .collapse-btn { display:none; } .main { margin-left:0; padding:15px; transition:none; } .main.expanded { margin-left:0; } .main.fullscreen-gantt { padding:0; } .header { align-items:flex-start; gap:12px; flex-direction:column; } }
   </style>
 </head>
 <body>
@@ -81,13 +91,28 @@
     </section>
     <section class="row mb-4 analytics-row">
       <div class="col-md-4 mb-3"><div class="chart-card analytics-card"><h5 class="mb-3">專案狀態分析</h5><div class="chart-wrapper"><canvas id="statusChart"></canvas></div></div></div>
-      <div class="col-md-8 mb-3"><div class="chart-card analytics-card"><h5 class="mb-3">年度稽核甘特圖</h5><div id="gantt"></div></div></div>
+      <div class="col-md-8 mb-3"><div class="chart-card analytics-card gantt-section"><div class="d-flex justify-content-between align-items-center mb-3"><h5 class="mb-0">年度稽核甘特圖</h5><div class="gantt-controls"><button id="ganttFullscreenBtn" class="gantt-fullscreen-btn" title="放大至整頁">🔍 放大</button></div></div><div id="gantt"></div></div></div>
     </section>
     <section class="card-section">
       <h5 class="mb-3">稽核專案清單</h5>
       <div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>專案編號</th><th>專案名稱</th><th>分類</th><th>稽核人員</th><th>進度</th><th>狀態</th><th>結束日期</th><th>操作</th></tr></thead><tbody id="projectTableBody"></tbody></table></div>
     </section>
   </main>
+
+  <!-- 全屏甘特圖模態 -->
+  <div id="ganttFullscreen">
+    <div id="ganttFullscreenHeader">
+      <div>
+        <h4 class="mb-0">年度稽核甘特圖 - 全屏模式</h4>
+        <small class="text-muted">共 <span id="ganttProjectCount">0</span> 個專案</small>
+      </div>
+      <button id="ganttCloseBtn" class="gantt-close-btn" title="關閉全屏">✕ 關閉</button>
+    </div>
+    <div id="ganttFullscreenContent">
+      <div id="ganttFullscreenChart"></div>
+    </div>
+  </div>
+
   <div class="modal fade" id="editProjectModal" tabindex="-1" aria-labelledby="editProjectModalLabel" aria-hidden="true"><div class="modal-dialog"><form class="modal-content" id="editProjectForm">
     <div class="modal-header"><h5 class="modal-title" id="editProjectModalLabel">編輯稽核專案</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉"></button></div>
     <div class="modal-body"><input type="hidden" id="editOriginalId">
@@ -109,7 +134,7 @@
       { id:'IA001', name:'採購流程稽核', category:'內部稽核', auditor:'David', start:'2026-08-01', end:'2026-08-31', progress:70 },
       { id:'IA002', name:'ERP 系統稽核', category:'外部稽核', auditor:'Amy', start:'2026-07-01', end:'2026-07-25', progress:100 }
     ];
-    let projects = [], chartInstance, ganttInstance;
+    let projects = [], chartInstance, ganttInstance, ganttFullscreenInstance;
     const byId = id => document.getElementById(id);
     const escapeHtml = value => String(value || '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[char]);
     const isOverdue = project => project.progress < 100 && project.end && new Date(project.end + 'T23:59:59') < new Date();
@@ -133,6 +158,18 @@
       }
     }
     
+    function toggleGanttFullscreen() {
+      const fullscreenDiv = byId('ganttFullscreen');
+      fullscreenDiv.classList.toggle('active');
+      if (fullscreenDiv.classList.contains('active')) {
+        byId('main').classList.add('fullscreen-gantt');
+        renderGanttFullscreen();
+      } else {
+        byId('main').classList.remove('fullscreen-gantt');
+        if (ganttFullscreenInstance) ganttFullscreenInstance = null;
+      }
+    }
+    
     function loadProjects() { try { projects = JSON.parse(localStorage.getItem(STORAGE_KEY)) || DEFAULT_PROJECTS; } catch { projects = DEFAULT_PROJECTS; } saveProjects(); }
     function saveProjects() { localStorage.setItem(STORAGE_KEY, JSON.stringify(projects)); }
     function statusBadge(project) { if (project.progress >= 100) return '<span class="status-done">已完成</span>'; if (isOverdue(project)) return '<span class="status-overdue">逾期</span>'; return '<span class="status-running">進行中</span>'; }
@@ -143,12 +180,13 @@
     function updateKPIs() { const completed=projects.filter(p=>p.progress>=100).length, overdue=projects.filter(isOverdue).length; byId('totalProjects').textContent=projects.length; byId('completed').textContent=completed; byId('running').textContent=projects.length-completed-overdue; byId('overdue').textContent=overdue; }
     function updateChart() { const completed=projects.filter(p=>p.progress>=100).length, overdue=projects.filter(isOverdue).length; chartInstance.data.datasets[0].data=[completed,projects.length-completed-overdue,overdue]; chartInstance.update(); }
     function updateGantt() { const today=new Date().toISOString().slice(0,10), tasks=projects.map(p=>({id:p.id,name:p.name,start:p.start||p.end||today,end:p.end||p.start||today,progress:p.progress})); if (ganttInstance) ganttInstance.refresh(tasks); else ganttInstance=new Gantt('#gantt',tasks,{on_click:task=>{},on_date_change:(task,start,end)=>{},on_progress_update:(task,progress)=>{},view_mode:'Month',bar_corner_radius:4}); }
+    function renderGanttFullscreen() { const container=byId('ganttFullscreenChart'), today=new Date().toISOString().slice(0,10), tasks=projects.map(p=>({id:p.id,name:p.name,start:p.start||p.end||today,end:p.end||p.start||today,progress:p.progress})); byId('ganttProjectCount').textContent=projects.length; container.innerHTML=''; if (!tasks.length) { container.innerHTML='<div class="text-secondary py-5 text-center">尚無專案</div>'; return; } ganttFullscreenInstance=new Gantt(container,tasks,{on_click:task=>{},on_date_change:(task,start,end)=>{},on_progress_update:(task,progress)=>{},view_mode:'Month',bar_corner_radius:4}); }
     function clearAddForm() { ['projectNo','projectName','auditor','startDate','endDate'].forEach(id => byId(id).value=''); byId('category').value='內部稽核'; }
     function addProject() { const id=byId('projectNo').value.trim() || `P${Date.now()}`, name=byId('projectName').value.trim(); if (!name) { alert('Please enter a project name.'); return; } if (projects.some(p=>p.id===id)) { alert('Project ID already exists.'); return; } projects.push({id,name,category:byId('category').value,auditor:byId('auditor').value,start:byId('startDate').value,end:byId('endDate').value,progress:0}); saveProjects(); renderProjects(); clearAddForm(); }
     function openEditProject(id) { const p=projects.find(item=>item.id===id); if (!p) return; byId('editOriginalId').value=p.id; byId('editProjectNo').value=p.id; byId('editProjectName').value=p.name; byId('editCategory').value=p.category||'內部稽核'; byId('editAuditor').value=p.auditor||''; byId('editStartDate').value=p.start||''; byId('editEndDate').value=p.end||''; byId('editProgress').value=p.progress||0; new bootstrap.Modal(byId('editProjectModal')).show(); }
     function saveEditedProject() { const oldId=byId('editOriginalId').value, id=byId('editProjectNo').value.trim(), name=byId('editProjectName').value.trim(), progress=Math.max(0,Math.min(100,Number(byId('editProgress').value)||0)); if (!name) { alert('Please enter a project name.'); return; } const p=projects.find(item=>item.id===oldId); if (!p) return; if (id!==oldId && projects.some(item=>item.id===id)) { alert('Project ID already exists.'); return; } p.id=id; p.name=name; p.category=byId('editCategory').value; p.auditor=byId('editAuditor').value; p.start=byId('editStartDate').value; p.end=byId('editEndDate').value; p.progress=progress; saveProjects(); renderProjects(); bootstrap.Modal.getInstance(byId('editProjectModal')).hide(); }
     function exportCsv() { const rows=[['專案編號','專案名稱','分類','稽核人員','開始日期','結束日期','進度'],...projects.map(p=>[p.id,p.name,p.category||'內部稽核',p.auditor||'',p.start||'',p.end||'',p.progress])], csv=rows.map(r=>r.map(cell=>`"${String(cell).replace(/"/g,'""')}"`).join(',')).join('\n'), blob=new Blob([csv],{type:'text/csv'}), url=URL.createObjectURL(blob), link=document.createElement('a'); link.href=url; link.download='audit_projects.csv'; link.click(); URL.revokeObjectURL(url); }
-    document.addEventListener('DOMContentLoaded', () => { loadProjects(); restoreSidebarState(); byId('collapseBtn').addEventListener('click', toggleSidebar); chartInstance=new Chart(byId('statusChart'),{type:'doughnut',data:{labels:['Completed','In progress','Overdue'],datasets:[{data:[0,0,0],backgroundColor:['#dcfce7','#dbeafe','#fee2e2'],borderColor:'#fff',borderWidth:2}]},options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{position:'bottom'}}}}); renderProjects(); byId('addBtn').addEventListener('click',addProject); byId('exportCsv').addEventListener('click',exportCsv); byId('editProjectForm').addEventListener('submit',e=>{e.preventDefault(); saveEditedProject();}); });
+    document.addEventListener('DOMContentLoaded', () => { loadProjects(); restoreSidebarState(); byId('collapseBtn').addEventListener('click', toggleSidebar); byId('ganttFullscreenBtn').addEventListener('click', toggleGanttFullscreen); byId('ganttCloseBtn').addEventListener('click', toggleGanttFullscreen); document.addEventListener('keydown', e => { if (e.key === 'Escape' && byId('ganttFullscreen').classList.contains('active')) toggleGanttFullscreen(); }); chartInstance=new Chart(byId('statusChart'),{type:'doughnut',data:{labels:['Completed','In progress','Overdue'],datasets:[{data:[0,0,0],backgroundColor:['#dcfce7','#dbeafe','#fee2e2'],borderColor:'#fff',borderWidth:2}]},options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{position:'bottom'}}}}); renderProjects(); byId('addBtn').addEventListener('click',addProject); byId('exportCsv').addEventListener('click',exportCsv); byId('editProjectForm').addEventListener('submit',e=>{e.preventDefault(); saveEditedProject();}); });
   </script>
 </body>
 </html>
