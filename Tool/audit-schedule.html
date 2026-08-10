@@ -9,28 +9,46 @@
   <style>
     :root { --primary:#2563eb; --sidebar:#0f172a; --background:#f1f5f9; }
     body { background:var(--background); font-family:"Segoe UI","Microsoft JhengHei",sans-serif; }
-    .sidebar { position:fixed; inset:0 auto 0 0; width:240px; padding:24px 0; color:#fff; background:var(--sidebar); }
-    .logo { padding:0 25px 28px; font-size:26px; font-weight:700; }
-    .menu-item { padding:14px 25px; } .menu-item:hover { background:#1e293b; } .active-menu { background:var(--primary); }
-    .main { margin-left:240px; padding:25px; } .header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
-    .header-title { font-size:28px; font-weight:700; } .header-sub { color:#64748b; }
-    .profile,.card-section { background:#fff; box-shadow:0 4px 20px rgba(0,0,0,.08); } .profile { padding:10px 20px; border-radius:50px; }
-    .card-section { padding:22px; border-radius:20px; } #gantt { min-height:420px; overflow:auto; }
-    .table { vertical-align:middle; } .table thead { background:#eff6ff; }
+    .sidebar { position:fixed; inset:0 auto 0 0; width:240px; padding:24px 0; color:#fff; background:var(--sidebar); transition:width 0.3s ease, margin-left 0.3s ease; z-index:1000; }
+    .sidebar.collapsed { width:70px; padding:24px 0; }
+    .logo { padding:0 25px 28px; font-size:26px; font-weight:700; white-space:nowrap; overflow:hidden; }
+    .sidebar.collapsed .logo { font-size:20px; padding:0 15px 28px; }
+    .sidebar.collapsed .menu-text { display:none; }
+    .menu-item { padding:14px 25px; display:flex; align-items:center; gap:10px; cursor:pointer; transition:background 0.2s; }
+    .sidebar.collapsed .menu-item { padding:14px 12px; justify-content:center; }
+    .menu-item:hover { background:#1e293b; }
+    .active-menu { background:var(--primary); }
+    .menu-text { white-space:nowrap; }
+    .collapse-btn { position:absolute; top:20px; right:10px; background:none; border:none; color:#fff; font-size:18px; cursor:pointer; padding:5px; transition:transform 0.3s; }
+    .collapse-btn:hover { transform:scale(1.2); }
+    .main { margin-left:240px; padding:25px; transition:margin-left 0.3s ease; }
+    .main.expanded { margin-left:70px; }
+    .header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+    .header-title { font-size:28px; font-weight:700; }
+    .header-sub { color:#64748b; }
+    .profile,.card-section { background:#fff; box-shadow:0 4px 20px rgba(0,0,0,.08); }
+    .profile { padding:10px 20px; border-radius:50px; }
+    .card-section { padding:22px; border-radius:20px; }
+    #gantt { min-height:420px; overflow:auto; }
+    .table { vertical-align:middle; }
+    .table thead { background:#eff6ff; }
     .project-summary { padding:14px 16px; border-radius:12px; background:#eff6ff; color:#1e3a8a; }
-    .status { padding:4px 10px; border-radius:20px; font-size:.85rem; } .status-not-started { background:#e2e8f0; color:#334155; }
-    .status-running { background:#dbeafe; color:#1d4ed8; } .status-done { background:#dcfce7; color:#15803d; }
-    @media (max-width:767px) { .sidebar { position:relative; width:100%; height:auto; } .main { margin-left:0; padding:15px; } .header { align-items:flex-start; flex-direction:column; gap:10px; } }
+    .status { padding:4px 10px; border-radius:20px; font-size:.85rem; }
+    .status-not-started { background:#e2e8f0; color:#334155; }
+    .status-running { background:#dbeafe; color:#1d4ed8; }
+    .status-done { background:#dcfce7; color:#15803d; }
+    @media (max-width:767px) { .sidebar { position:relative; width:100%; height:auto; transition:none; } .sidebar.collapsed { width:100%; } .collapse-btn { display:none; } .main { margin-left:0; padding:15px; transition:none; } .main.expanded { margin-left:0; } .header { align-items:flex-start; flex-direction:column; gap:10px; } }
   </style>
 </head>
 <body>
-  <aside class="sidebar">
+  <aside class="sidebar" id="sidebar">
+    <button class="collapse-btn" id="collapseBtn" title="最小化/展開">◀</button>
     <div class="logo">IA</div>
-    <a class="menu-item text-white text-decoration-none d-block" href="index.html">📊 儀表板</a>
-    <a class="menu-item active-menu text-white text-decoration-none d-block" href="audit-schedule.html">📋 稽核專案時程</a>
-    <div class="menu-item">📈 分析報表</div>
+    <a class="menu-item text-white text-decoration-none d-block" href="index.html"><span>📊</span><span class="menu-text">儀表板</span></a>
+    <a class="menu-item active-menu text-white text-decoration-none d-block" href="audit-schedule.html"><span>📋</span><span class="menu-text">稽核專案時程</span></a>
+    <div class="menu-item text-white"><span>📈</span><span class="menu-text">分析報表</span></div>
   </aside>
-  <main class="main">
+  <main class="main" id="main">
     <header class="header">
       <div><div class="header-title">稽核專案時程</div><div class="header-sub">維護各稽核專案的細部工作時程與進度</div></div>
       <div class="profile">👤 Auditor Manager</div>
@@ -54,16 +72,36 @@
     </section>
     <section class="card-section mb-4">
       <h5 class="mb-3">細部時程清單</h5>
-      <div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>工作項目</th><th>負責人</th><th>開始日期</th><th>結束日期</th><th>進度</th><th class="text-end">操作</th></tr></thead><tbody id="scheduleTableBody"></tbody></table></div>
+      <div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>工作項目</th><th>負責人</th><th>開始日期</th><th>結束日期</th><th>進度</th><th>狀態</th><th class="text-end">操作</th></tr></thead><tbody id="scheduleTableBody"></tbody></table></div>
     </section>
     <section class="card-section"><h5 class="mb-3">稽核甘特圖</h5><div id="gantt"></div></section>
   </main>
   <script src="https://cdn.jsdelivr.net/npm/frappe-gantt/dist/frappe-gantt.umd.min.js"></script>
   <script>
-    const PROJECT_KEY = 'ia_projects_v1', SCHEDULE_KEY = 'ia_project_schedules_v1';
+    const PROJECT_KEY = 'ia_projects_v1', SCHEDULE_KEY = 'ia_project_schedules_v1', SIDEBAR_STATE_KEY = 'ia_sidebar_collapsed';
     let projects = [], schedules = [], selectedProjectId = '', editingTaskId = '';
     const byId = id => document.getElementById(id);
     const escapeHtml = value => String(value || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+    
+    function toggleSidebar() {
+      const sidebar = byId('sidebar');
+      const main = byId('main');
+      const collapseBtn = byId('collapseBtn');
+      const isCollapsed = sidebar.classList.toggle('collapsed');
+      main.classList.toggle('expanded');
+      localStorage.setItem(SIDEBAR_STATE_KEY, isCollapsed ? 'true' : 'false');
+      collapseBtn.textContent = isCollapsed ? '▶' : '◀';
+    }
+    
+    function restoreSidebarState() {
+      const isCollapsed = localStorage.getItem(SIDEBAR_STATE_KEY) === 'true';
+      if (isCollapsed) {
+        byId('sidebar').classList.add('collapsed');
+        byId('main').classList.add('expanded');
+        byId('collapseBtn').textContent = '▶';
+      }
+    }
+    
     function loadData() { try { projects = JSON.parse(localStorage.getItem(PROJECT_KEY)) || []; schedules = JSON.parse(localStorage.getItem(SCHEDULE_KEY)) || []; } catch { projects=[]; schedules=[]; } }
     function saveSchedules() { localStorage.setItem(SCHEDULE_KEY, JSON.stringify(schedules)); }
     function selectedProject() { return projects.find(p => p.id === selectedProjectId); }
@@ -75,14 +113,15 @@
       selectedProjectId = projects.some(p => p.id === selectedProjectId) ? selectedProjectId : projects[0].id;
       select.value = selectedProjectId;
     }
-    function renderSummary() { const p=selectedProject(); byId('projectSummary').textContent = p ? `分類：${p.category || '內部稽核'}　｜　稽核人員：${p.auditor || '未指派'}　｜　專案期間：${p.start || '未設定'} 至 ${p.end || '未設定'}` : '請先至儀表板新增稽核專案。'; }
-    function renderTable() { const tasks=projectTasks(); byId('scheduleTableBody').innerHTML=tasks.length ? tasks.map(t=>`<tr><td>${escapeHtml(t.name)}</td><td>${escapeHtml(t.owner)}</td><td>${t.start}</td><td>${t.end}</td><td>${t.progress}%</td><td class="text-end"><button class="btn btn-sm btn-outline-primary me-1" data-action="edit" data-id="${t.id}">編輯</button><button class="btn btn-sm btn-outline-danger" data-action="delete" data-id="${t.id}">刪除</button></td></tr>`).join('') : '<tr><td colspan="6" class="text-center text-secondary py-4">尚無細部時程。</td></tr>'; }
-    function renderGantt() { const container=byId('gantt'), tasks=projectTasks(); container.innerHTML=''; if (!tasks.length) { container.innerHTML='<div class="text-secondary py-5 text-center">新增細部時程後，即會在此顯示甘特圖。</div>'; return; } new Gantt('#gantt',tasks.map(t=>({id:t.id,name:t.name,start:t.start,end:t.end,progress:t.progress})),{view_mode:'Month'}); }
+    function renderSummary() { const p=selectedProject(); byId('projectSummary').textContent = p ? `分類：${p.category || '內部稽核'}　｜　稽核人員：${p.auditor || '未指派'}　｜　期間：${p.start || '未設定'}～${p.end || '未設定'}` : '請選擇專案。'; }
+    function renderTable() { const tasks=projectTasks(); byId('scheduleTableBody').innerHTML=tasks.length ? tasks.map(t=>`<tr><td>${escapeHtml(t.name)}</td><td>${escapeHtml(t.owner)}</td><td>${t.start||'-'}</td><td>${t.end||'-'}</td><td><div class="progress"><div class="progress-bar" style="width:${t.progress||0}%"></div></div></td><td><span class="status ${t.progress>=100?'status-done':t.progress>0?'status-running':'status-not-started'}">${t.progress>=100?'已完成':t.progress>0?'進行中':'未開始'}</span></td><td class="text-end"><button class="btn btn-sm btn-outline-primary" onclick="editTask('${escapeHtml(t.id)}')">編輯</button> <button class="btn btn-sm btn-outline-danger" onclick="deleteTask('${escapeHtml(t.id)}')">刪除</button></td></tr>`).join('') : '<tr><td colspan="7" class="text-center text-secondary py-3">尚無工作項目</td></tr>'; }
+    function renderGantt() { const container=byId('gantt'), tasks=projectTasks(); container.innerHTML=''; if (!tasks.length) { container.innerHTML='<div class="text-secondary py-5 text-center">新增時程後會顯示甘特圖</div>'; return; } const ganttTasks=tasks.map(t=>({id:t.id,name:t.name,start:t.start||t.end||new Date().toISOString().slice(0,10),end:t.end||t.start||new Date().toISOString().slice(0,10),progress:t.progress||0})); new Gantt(container,ganttTasks,{on_click:task=>{},on_date_change:(task,start,end)=>{},on_progress_update:(task,progress)=>{},view_mode:'Month',bar_corner_radius:4}); }
     function render() { renderSummary(); renderTable(); renderGantt(); }
     function resetForm() { editingTaskId=''; byId('scheduleForm').reset(); byId('taskProgress').value=0; byId('saveTaskBtn').textContent='新增時程'; byId('cancelEditBtn').classList.add('d-none'); }
-    function editTask(id) { const task=schedules.find(t=>t.id===id); if (!task) return; editingTaskId=id; byId('taskName').value=task.name; byId('taskOwner').value=task.owner||''; byId('taskStart').value=task.start; byId('taskEnd').value=task.end; byId('taskProgress').value=task.progress; byId('saveTaskBtn').textContent='儲存修改'; byId('cancelEditBtn').classList.remove('d-none'); byId('taskName').focus(); }
-    function saveTask(event) { event.preventDefault(); if (!selectedProjectId) return; const start=byId('taskStart').value,end=byId('taskEnd').value; if (end < start) { alert('結束日期不可早於開始日期。'); return; } const task={id:editingTaskId || `S${Date.now()}`,projectId:selectedProjectId,name:byId('taskName').value.trim(),owner:byId('taskOwner').value.trim(),start,end,progress:Math.min(100,Math.max(0,Number(byId('taskProgress').value)))}; if (editingTaskId) Object.assign(schedules.find(t=>t.id===editingTaskId),task); else schedules.push(task); saveSchedules(); resetForm(); render(); }
-    document.addEventListener('DOMContentLoaded',()=>{ loadData(); renderProjectOptions(); render(); byId('projectSelect').addEventListener('change',e=>{selectedProjectId=e.target.value; resetForm(); render();}); byId('scheduleForm').addEventListener('submit',saveTask); byId('cancelEditBtn').addEventListener('click',resetForm); byId('scheduleTableBody').addEventListener('click',e=>{const button=e.target.closest('button[data-action]'); if(!button)return; const id=button.dataset.id; if(button.dataset.action==='edit') editTask(id); else if(confirm('確定刪除此細部時程？')) { schedules=schedules.filter(t=>t.id!==id); saveSchedules(); resetForm(); render(); }}); });
+    function editTask(id) { const task=schedules.find(t=>t.id===id); if (!task) return; editingTaskId=id; byId('taskName').value=task.name; byId('taskOwner').value=task.owner||''; byId('taskStart').value=task.start||''; byId('taskEnd').value=task.end||''; byId('taskProgress').value=task.progress||0; byId('saveTaskBtn').textContent='保存修改'; byId('cancelEditBtn').classList.remove('d-none'); }
+    function deleteTask(id) { if (!confirm('確定刪除此工作項目？')) return; schedules=schedules.filter(t=>t.id!==id); saveSchedules(); render(); }
+    function saveTask(event) { event.preventDefault(); if (!selectedProjectId) return; const start=byId('taskStart').value,end=byId('taskEnd').value; if (end < start) { alert('結束日期不可早於開始日期'); return; } if (editingTaskId) { const task=schedules.find(t=>t.id===editingTaskId); if (task) { task.name=byId('taskName').value; task.owner=byId('taskOwner').value; task.start=start; task.end=end; task.progress=Math.max(0,Math.min(100,Number(byId('taskProgress').value)||0)); } resetForm(); } else { schedules.push({id:`task_${Date.now()}`,projectId:selectedProjectId,name:byId('taskName').value,owner:byId('taskOwner').value,start:start,end:end,progress:Math.max(0,Math.min(100,Number(byId('taskProgress').value)||0))}); resetForm(); } saveSchedules(); render(); }
+    document.addEventListener('DOMContentLoaded',()=>{ loadData(); restoreSidebarState(); byId('collapseBtn').addEventListener('click', toggleSidebar); renderProjectOptions(); render(); byId('projectSelect').addEventListener('change',e=>{selectedProjectId=e.target.value; resetForm(); render();}); byId('scheduleForm').addEventListener('submit',saveTask); byId('cancelEditBtn').addEventListener('click',()=>{resetForm();render();}); });
   </script>
 </body>
 </html>
