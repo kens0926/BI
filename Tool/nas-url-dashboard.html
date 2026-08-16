@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>常用連結看板</title>
+  <style>
+    :root { --ink:#18212f; --muted:#697386; --line:#e6e9ef; --panel:#fff; --brand:#2563eb; --bg:#f1f5f9; --danger:#dc2626; --sidebar:#0f172a; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--bg); font-family:"Microsoft JhengHei", "Noto Sans TC", system-ui, sans-serif; }
+    button, input, select, textarea { font:inherit; }
+    .sidebar { position:fixed; inset:0 auto 0 0; width:240px; padding:24px 0; color:#fff; background:var(--sidebar); transition:width .3s ease, margin-left .3s ease; z-index:1000; }
+    .sidebar.collapsed { width:70px; padding:24px 0; } .logo { padding:0 25px 28px; font-weight:700; font-size:26px; white-space:nowrap; overflow:hidden; }
+    .sidebar.collapsed .logo { font-size:20px; padding:0 15px 28px; } .sidebar.collapsed .menu-text { display:none; }
+    .menu-item { padding:14px 25px; display:flex; align-items:center; gap:10px; cursor:pointer; transition:background .2s; color:#fff; text-decoration:none; }
+    .sidebar.collapsed .menu-item { padding:14px 12px; justify-content:center; } .menu-item:hover { background:#1e293b; color:#fff; } .active-menu { background:var(--brand); }
+    .menu-text { white-space:nowrap; } .collapse-btn { position:absolute; top:20px; right:10px; background:none; border:none; color:#fff; font-size:18px; cursor:pointer; padding:5px; transition:transform .3s; }
+    .collapse-btn:hover { transform:scale(1.2); } .main { margin-left:240px; padding:25px; transition:margin-left .3s ease; } .main.expanded { margin-left:70px; }
+    .header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; } .header-title { font-size:28px; font-weight:700; } .header-sub { color:#64748b; }
+    .profile { padding:10px 20px; border-radius:50px; background:#fff; box-shadow:0 4px 20px rgba(0,0,0,.08); }
+    .container { max-width:1180px; margin:0 auto; padding:0 0 42px; }
+    .toolbar, .category-bar { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    .toolbar { justify-content:space-between; margin-bottom:24px; }
+    .search { min-width:260px; flex:1; max-width:420px; padding:11px 14px; border:1px solid var(--line); border-radius:9px; background:white; outline-color:var(--brand); }
+    .btn { cursor:pointer; border:0; border-radius:8px; padding:10px 15px; font-weight:700; transition:.18s; }
+    .btn:hover { transform:translateY(-1px); filter:brightness(.97); } .btn.primary { background:var(--brand); color:white; } .btn.light { background:white; color:var(--ink); border:1px solid var(--line); }
+    .category-bar { margin-bottom:22px; } .filter { background:transparent; border:0; color:var(--muted); cursor:pointer; padding:8px 11px; border-radius:7px; }
+    .filter.active, .filter:hover { color:var(--brand); background:#dbeafe; font-weight:700; }
+    .section-heading { display:flex; align-items:center; justify-content:space-between; margin:27px 0 11px; }
+    .section-heading h2 { margin:0; font-size:16px; } .count { color:var(--muted); font-size:13px; }
+    .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(255px,1fr)); gap:14px; }
+    .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:17px; min-height:150px; display:flex; flex-direction:column; transition:.18s; }
+    .card:hover { box-shadow:0 8px 20px #17255412; border-color:#c7d2fe; }
+    .card-top { display:flex; align-items:start; gap:11px; } .icon { width:38px; height:38px; display:grid; place-items:center; background:#eff6ff; color:#2563eb; border-radius:10px; font-size:19px; flex:none; }
+    .card-title { font-weight:800; line-height:1.35; word-break:break-word; } .card-note { color:var(--muted); font-size:13px; margin:7px 0 14px; line-height:1.45; }
+    .card-url { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:#64748b; background:#f8fafc; padding:7px 9px; border-radius:6px; font-size:12px; margin-top:auto; }
+    .card-actions { display:flex; gap:8px; margin-top:12px; } .open { flex:1; text-align:center; text-decoration:none; background:#eff6ff; color:#1d4ed8; padding:8px; font-weight:700; border-radius:7px; font-size:13px; }
+    .small-btn { cursor:pointer; background:white; color:#64748b; border:1px solid var(--line); border-radius:7px; padding:7px 9px; } .small-btn.delete:hover { color:var(--danger); border-color:#fecaca; }
+    .empty { background:#fff; border:1px dashed #cbd5e1; border-radius:12px; padding:45px 20px; text-align:center; color:var(--muted); }
+    dialog { width:min(540px, calc(100% - 32px)); padding:0; border:0; border-radius:14px; box-shadow:0 24px 70px #0f172a55; } dialog::backdrop { background:#0f172a77; }
+    .modal { padding:24px; } .modal h2 { margin:0 0 20px; font-size:20px; } .field { display:block; margin:14px 0; } .field span { display:block; font-weight:700; font-size:13px; margin-bottom:6px; }
+    .field input, .field select, .field textarea { width:100%; padding:10px 11px; border:1px solid #cbd5e1; border-radius:7px; outline-color:var(--brand); } textarea { min-height:72px; resize:vertical; }
+    .help { margin:-6px 0 10px; font-size:12px; color:var(--muted); } .modal-actions { display:flex; justify-content:flex-end; gap:9px; margin-top:22px; }
+    .manage { padding:0; list-style:none; max-height:220px; overflow:auto; } .manage li { display:flex; justify-content:space-between; border-bottom:1px solid var(--line); padding:9px 0; }
+    .add-category { display:flex; gap:8px; margin-top:16px; } .add-category input { flex:1; padding:9px; border:1px solid #cbd5e1; border-radius:7px; }
+    @media (max-width:767px) { .sidebar { position:relative; width:100%; height:auto; transition:none; } .sidebar.collapsed { width:100%; } .collapse-btn { display:none; } .main,.main.expanded { margin-left:0; padding:15px; } .header { align-items:flex-start; gap:12px; flex-direction:column; } .container { padding-bottom:32px; } .toolbar { align-items:stretch; } .search { max-width:none; min-width:0; flex-basis:100%; } .header-title { font-size:23px; } }
+  </style>
+</head>
+<body>
+  <aside class="sidebar" id="sidebar">
+    <button class="collapse-btn" id="collapseBtn" title="最小化/展開">◀</button>
+    <div class="logo">IA</div>
+    <a class="menu-item" href="index.html"><span>📊</span><span class="menu-text">儀表板</span></a>
+    <a class="menu-item" href="audit-schedule.html"><span>📋</span><span class="menu-text">稽核專案時程</span></a>
+    <a class="menu-item active-menu" href="nas-url-dashboard.html"><span>🔗</span><span class="menu-text">NAS／URL 連結看板</span></a>
+  </aside>
+  <main class="main" id="main">
+    <header class="header"><div><div class="header-title">NAS／URL 連結看板</div><div class="header-sub">集中管理 NAS 資料夾、內部系統與常用網站</div></div><div class="profile">👤 Auditor Manager</div></header>
+    <div class="container">
+    <div class="toolbar"><input class="search" id="search" type="search" placeholder="搜尋名稱、說明或路徑…"><div class="toolbar"><button class="btn light" id="exportBackup">匯出備份</button><button class="btn light" id="importBackup">匯入備份</button><button class="btn light" id="manageCategories">管理分類</button><button class="btn primary" id="addLink">＋ 新增連結</button></div></div>
+    <nav class="category-bar" id="filters" aria-label="分類篩選"></nav>
+    <div id="board"></div>
+    </div>
+  </main>
+
+  <dialog id="linkDialog"><form class="modal" id="linkForm"><h2 id="dialogTitle">新增連結</h2><input type="hidden" id="linkId">
+    <label class="field"><span>名稱 *</span><input id="name" required maxlength="60" placeholder="例如：財務部共享資料夾"></label>
+    <label class="field"><span>類型</span><select id="type"><option value="nas">NAS／檔案路徑</option><option value="url">網站 URL</option></select></label>
+    <label class="field"><span>連結或路徑 *</span><input id="address" required placeholder="\\NAS-Server\Department 或 https://example.com"></label>
+    <p class="help">NAS 路徑會自動轉為可點擊的 <code>file://</code> 連結；開啟權限依瀏覽器與公司安全性設定而定。</p>
+    <label class="field"><span>分類 *</span><select id="category"></select></label>
+    <label class="field"><span>備註</span><textarea id="note" maxlength="160" placeholder="可選填，例如：僅限內網使用"></textarea></label>
+    <div class="modal-actions"><button class="btn light" type="button" data-close>取消</button><button class="btn primary" type="submit">儲存連結</button></div>
+  </form></dialog>
+  <dialog id="categoryDialog"><div class="modal"><h2>管理分類</h2><ul class="manage" id="categoryList"></ul><form class="add-category" id="categoryForm"><input id="newCategory" required maxlength="30" placeholder="新增分類名稱"><button class="btn primary">新增</button></form><div class="modal-actions"><button class="btn light" data-close>關閉</button></div></div></dialog>
+  <input id="backupFile" type="file" accept="application/json,.json" hidden>
+
+  <script>
+    const KEY = 'nas-url-dashboard-v1';
+    const SIDEBAR_STATE_KEY = 'ia_sidebar_collapsed';
+    const defaultData = { categories:['全部','部門資料','內部系統','常用網站'], links:[] };
+    function normalizeData(raw) { if(!raw) return structuredClone(defaultData); const categories=['全部',...new Set((Array.isArray(raw.categories)?raw.categories:[]).filter(c=>typeof c==='string'&&c.trim()&&c!=='全部').map(c=>c.trim()))]; const links=(Array.isArray(raw.links)?raw.links:[]).filter(l=>l&&typeof l.name==='string'&&typeof l.address==='string').map(l=>({id:typeof l.id==='string'?l.id:crypto.randomUUID(),name:l.name.trim(),address:l.address.trim(),type:l.type==='nas'?'nas':'url',category:categories.includes(l.category)?l.category:categories[1]||'未分類',note:typeof l.note==='string'?l.note:''})); if(!categories.slice(1).length) categories.push('未分類'); return {categories,links}; }
+    let data; try { data=normalizeData(JSON.parse(localStorage.getItem(KEY) || 'null')); } catch { data=structuredClone(defaultData); }
+    let activeCategory = '全部';
+    const $ = s => document.querySelector(s);
+    const esc = s => String(s).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+    const save = () => localStorage.setItem(KEY, JSON.stringify(data));
+    function normalizedAddress(address, type) {
+      if (type === 'nas') {
+        if (address.startsWith('file://')) return address;
+        const path=address.trim().replaceAll('\\', '/');
+        return path.startsWith('//') ? `file://${encodeURI(path.slice(2))}` : `file:///${encodeURI(path.replace(/^\/+/,''))}`;
+      }
+      return /^https?:\/\//i.test(address) ? address : 'https://' + address;
+    }
+    function renderFilters() { $('#filters').innerHTML = data.categories.map(c => `<button class="filter ${c===activeCategory?'active':''}" data-category="${esc(c)}">${esc(c)}</button>`).join(''); }
+    function renderBoard() {
+      const query = $('#search').value.trim().toLowerCase();
+      const visible = data.links.filter(l => (activeCategory==='全部'||l.category===activeCategory) && [l.name,l.address,l.note].join(' ').toLowerCase().includes(query));
+      const groups = activeCategory === '全部' ? data.categories.slice(1).map(c=>[c,visible.filter(l=>l.category===c)]).filter(([,v])=>v.length) : [[activeCategory,visible]];
+      $('#board').innerHTML = groups.length ? groups.map(([category, links]) => `<section><div class="section-heading"><h2>${esc(category)}</h2><span class="count">${links.length} 個連結</span></div><div class="cards">${links.map(card).join('')}</div></section>`).join('') : `<div class="empty">目前沒有符合的連結。<br>按「新增連結」建立第一筆項目。</div>`;
+    }
+    function card(l) { const url=normalizedAddress(l.address,l.type); return `<article class="card"><div class="card-top"><div class="icon">${l.type==='nas'?'🗂️':'↗️'}</div><div class="card-title">${esc(l.name)}</div></div>${l.note?`<p class="card-note">${esc(l.note)}</p>`:''}<div class="card-url" title="${esc(l.address)}">${esc(l.address)}</div><div class="card-actions"><a class="open" href="${esc(url)}" target="_blank" rel="noopener">開啟連結</a><button class="small-btn" data-edit="${l.id}" title="編輯">✎</button><button class="small-btn delete" data-delete="${l.id}" title="刪除">×</button></div></article>`; }
+    function fillCategories(selected) { $('#category').innerHTML=data.categories.slice(1).map(c=>`<option ${c===selected?'selected':''}>${esc(c)}</option>`).join(''); }
+    function openLinkDialog(link) { $('#linkForm').reset(); $('#linkId').value=link?.id||''; $('#dialogTitle').textContent=link?'編輯連結':'新增連結'; fillCategories(link?.category); if(link) ['name','type','address','note'].forEach(k=>$('#'+k).value=link[k]||''); $('#linkDialog').showModal(); }
+    function renderCategoryManager() { $('#categoryList').innerHTML=data.categories.slice(1).map(c=>`<li><span>${esc(c)}</span><button class="small-btn delete" data-remove-category="${esc(c)}">刪除</button></li>`).join('') || '<li>請先新增分類</li>'; }
+    function exportBackup() { const content=JSON.stringify({version:1,exportedAt:new Date().toISOString(),data},null,2), url=URL.createObjectURL(new Blob([content],{type:'application/json'})), link=document.createElement('a'); link.href=url;link.download='nas-url-dashboard-backup.json';link.click();URL.revokeObjectURL(url); }
+    function importBackup(file) { const reader=new FileReader(); reader.onload=event=>{ try { const backup=JSON.parse(event.target.result), restored=normalizeData(backup.data||backup); if(!confirm(`確定要以備份內容取代目前的 ${data.links.length} 個連結嗎？`)) return; data=restored;activeCategory='全部';save();renderFilters();renderBoard();alert(`已還原 ${data.links.length} 個連結。`); } catch { alert('無法讀取備份檔，請確認檔案格式。'); } }; reader.readAsText(file); }
+    $('#addLink').onclick=()=>openLinkDialog(); $('#manageCategories').onclick=()=>{renderCategoryManager();$('#categoryDialog').showModal();}; $('#search').oninput=renderBoard;
+    $('#filters').onclick=e=>{const c=e.target.dataset.category;if(c){activeCategory=c;renderFilters();renderBoard();}};
+    $('#board').onclick=e=>{const id=e.target.dataset.edit||e.target.dataset.delete;if(!id)return;const link=data.links.find(l=>l.id===id);if(e.target.dataset.edit)openLinkDialog(link);else if(confirm(`要刪除「${link.name}」嗎？`)){data.links=data.links.filter(l=>l.id!==id);save();renderBoard();}};
+    $('#linkForm').onsubmit=e=>{e.preventDefault();const id=$('#linkId').value;const link={id:id||crypto.randomUUID(),name:$('#name').value.trim(),type:$('#type').value,address:$('#address').value.trim(),category:$('#category').value,note:$('#note').value.trim()};if(id)data.links=data.links.map(l=>l.id===id?link:l);else data.links.push(link);save();$('#linkDialog').close();renderBoard();};
+    $('#categoryForm').onsubmit=e=>{e.preventDefault();const name=$('#newCategory').value.trim();if(data.categories.includes(name))return alert('此分類已存在。');data.categories.push(name);save();$('#newCategory').value='';renderCategoryManager();renderFilters();};
+    $('#categoryList').onclick=e=>{const name=e.target.dataset.removeCategory;if(!name)return;const used=data.links.some(l=>l.category===name);if(used)return alert('此分類仍有連結，請先移動或刪除其中的連結。');data.categories=data.categories.filter(c=>c!==name);if(activeCategory===name)activeCategory='全部';save();renderCategoryManager();renderFilters();renderBoard();};
+    $('#exportBackup').onclick=exportBackup; $('#importBackup').onclick=()=>$('#backupFile').click(); $('#backupFile').onchange=e=>{if(e.target.files[0])importBackup(e.target.files[0]);e.target.value='';};
+    document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>b.closest('dialog').close());
+    function toggleSidebar() { const collapsed=$('#sidebar').classList.toggle('collapsed');$('#main').classList.toggle('expanded');$('#collapseBtn').textContent=collapsed?'▶':'◀';localStorage.setItem(SIDEBAR_STATE_KEY,collapsed?'true':'false'); }
+    function restoreSidebarState() { if(localStorage.getItem(SIDEBAR_STATE_KEY)==='true'){ $('#sidebar').classList.add('collapsed');$('#main').classList.add('expanded');$('#collapseBtn').textContent='▶'; } }
+    $('#collapseBtn').onclick=toggleSidebar;
+    restoreSidebarState();
+    renderFilters();renderBoard();
+  </script>
+</body>
+</html>

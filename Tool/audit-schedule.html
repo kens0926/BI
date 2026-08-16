@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>稽核專案時程</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/frappe-gantt/dist/frappe-gantt.css" rel="stylesheet">
+  <link href="vendor/bootstrap.min.css" rel="stylesheet">
+  <link href="vendor/frappe-gantt.css" rel="stylesheet">
   <style>
     :root { --primary:#2563eb; --sidebar:#0f172a; --background:#f1f5f9; }
     body { background:var(--background); font-family:"Segoe UI","Microsoft JhengHei",sans-serif; }
@@ -47,6 +47,11 @@
     .status-not-started { background:#e2e8f0; color:#334155; }
     .status-running { background:#dbeafe; color:#1d4ed8; }
     .status-done { background:#dcfce7; color:#15803d; }
+    #csvFileInput { display:none; }
+    .import-result { margin-top:12px; padding:10px 12px; border-radius:8px; white-space:pre-line; }
+    .import-success { color:#166534; background:#dcfce7; }
+    .import-warning { color:#92400e; background:#fef3c7; }
+    .import-error { color:#991b1b; background:#fee2e2; }
     @media (max-width:767px) { .sidebar { position:relative; width:100%; height:auto; transition:none; } .sidebar.collapsed { width:100%; } .collapse-btn { display:none; } .main { margin-left:0; padding:15px; transition:none; } .main.expanded { margin-left:0; } .main.fullscreen-gantt { padding:0; } .header { align-items:flex-start; flex-direction:column; gap:10px; } }
   </style>
 </head>
@@ -56,7 +61,7 @@
     <div class="logo">IA</div>
     <a class="menu-item text-white text-decoration-none d-block" href="index.html"><span>📊</span><span class="menu-text">儀表板</span></a>
     <a class="menu-item active-menu text-white text-decoration-none d-block" href="audit-schedule.html"><span>📋</span><span class="menu-text">稽核專案時程</span></a>
-    <div class="menu-item text-white"><span>📈</span><span class="menu-text">分析報表</span></div>
+    <a class="menu-item text-white text-decoration-none d-block" href="nas-url-dashboard.html"><span>🔗</span><span class="menu-text">NAS／URL 連結看板</span></a>
   </aside>
   <main class="main" id="main">
     <header class="header">
@@ -70,7 +75,7 @@
       </div>
     </section>
     <section class="card-section mb-4">
-      <div class="d-flex justify-content-between align-items-center mb-3"><h5 class="mb-0">細部時程維護</h5><button id="cancelEditBtn" class="btn btn-sm btn-outline-secondary d-none">取消編輯</button></div>
+      <div class="d-flex justify-content-between align-items-center mb-3"><h5 class="mb-0">細部時程維護</h5><div class="d-flex gap-2"><button id="exportCsv" type="button" class="btn btn-sm btn-outline-secondary">匯出 CSV</button><button id="importBtn" type="button" class="btn btn-sm btn-outline-info">匯入 CSV</button><button id="cancelEditBtn" type="button" class="btn btn-sm btn-outline-secondary d-none">取消編輯</button></div></div>
       <form id="scheduleForm" class="row g-2 align-items-end">
         <div class="col-lg-3 col-md-6"><label for="taskName" class="form-label">工作項目</label><input id="taskName" class="form-control" required placeholder="例如：稽核規劃會議"></div>
         <div class="col-lg-2 col-md-6"><label for="taskOwner" class="form-label">負責人</label><input id="taskOwner" class="form-control" placeholder="姓名"></div>
@@ -79,6 +84,8 @@
         <div class="col-lg-1 col-md-4"><label for="taskProgress" class="form-label">進度</label><input id="taskProgress" type="number" min="0" max="100" value="0" class="form-control"></div>
         <div class="col-lg-2 col-md-8 d-grid"><button id="saveTaskBtn" type="submit" class="btn btn-primary">新增時程</button></div>
       </form>
+      <input type="file" id="csvFileInput" accept=".csv,text/csv">
+      <div id="importResult" aria-live="polite"></div>
     </section>
     <section class="card-section mb-4">
       <h5 class="mb-3">細部時程清單</h5>
@@ -109,12 +116,14 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/frappe-gantt/dist/frappe-gantt.umd.min.js"></script>
+  <script src="vendor/frappe-gantt.umd.min.js"></script>
   <script>
     const PROJECT_KEY = 'ia_projects_v1', SCHEDULE_KEY = 'ia_project_schedules_v1', SIDEBAR_STATE_KEY = 'ia_sidebar_collapsed';
     let projects = [], schedules = [], selectedProjectId = '', editingTaskId = '', ganttInstance = null, ganttFullscreenInstance = null;
     const byId = id => document.getElementById(id);
     const escapeHtml = value => String(value || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+    const formatDate = value => { const date = value instanceof Date ? value : new Date(value); return Number.isNaN(date.getTime()) ? '' : `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`; };
+    const isValidDate = value => /^\d{4}-\d{2}-\d{2}$/.test(value) && formatDate(value)===value;
     
     function toggleSidebar() {
       const sidebar = byId('sidebar');
@@ -159,15 +168,21 @@
       select.value = selectedProjectId;
     }
     function renderSummary() { const p=selectedProject(); byId('projectSummary').textContent = p ? `分類：${p.category || '內部稽核'}　｜　稽核人員：${p.auditor || '未指派'}　｜　期間：${p.start || '未設定'}～${p.end || '未設定'}` : '請選擇專案。'; }
-    function renderTable() { const tasks=projectTasks(); byId('scheduleTableBody').innerHTML=tasks.length ? tasks.map(t=>`<tr><td>${escapeHtml(t.name)}</td><td>${escapeHtml(t.owner)}</td><td>${t.start||'-'}</td><td>${t.end||'-'}</td><td><div class="progress"><div class="progress-bar" style="width:${t.progress||0}%"></div></div></td><td><span class="status ${t.progress>=100?'status-done':t.progress>0?'status-running':'status-not-started'}">${t.progress>=100?'已完成':t.progress>0?'進行中':'未開始'}</span></td><td class="text-end"><button class="btn btn-sm btn-outline-primary" onclick="editTask('${escapeHtml(t.id)}')">編輯</button> <button class="btn btn-sm btn-outline-danger" onclick="deleteTask('${escapeHtml(t.id)}')">刪除</button></td></tr>`).join('') : '<tr><td colspan="7" class="text-center text-secondary py-3">尚無工作項目</td></tr>'; }
-    function renderGantt() { const container=byId('gantt'), tasks=projectTasks(); container.innerHTML=''; if (!tasks.length) { container.innerHTML='<div class="text-secondary py-5 text-center">新增時程後會顯示甘特圖</div>'; ganttInstance=null; return; } const ganttTasks=tasks.map(t=>({id:t.id,name:t.name,start:t.start||t.end||new Date().toISOString().slice(0,10),end:t.end||t.start||new Date().toISOString().slice(0,10),progress:t.progress||0})); ganttInstance=new Gantt(container,ganttTasks,{on_click:task=>{},on_date_change:(task,start,end)=>{},on_progress_update:(task,progress)=>{},view_mode:'Month',bar_corner_radius:4}); }
-    function renderGanttFullscreen() { const container=byId('ganttFullscreenChart'), tasks=projectTasks(); const p=selectedProject(); byId('ganttProjectName').textContent=p?p.name:'未選擇'; container.innerHTML=''; if (!tasks.length) { container.innerHTML='<div class="text-secondary py-5 text-center">尚無工作項目</div>'; return; } const ganttTasks=tasks.map(t=>({id:t.id,name:t.name,start:t.start||t.end||new Date().toISOString().slice(0,10),end:t.end||t.start||new Date().toISOString().slice(0,10),progress:t.progress||0})); ganttFullscreenInstance=new Gantt(container,ganttTasks,{on_click:task=>{},on_date_change:(task,start,end)=>{},on_progress_update:(task,progress)=>{},view_mode:'Month',bar_corner_radius:4}); }
+    function renderTable() { const tasks=projectTasks(); byId('scheduleTableBody').innerHTML=tasks.length ? tasks.map(t=>`<tr><td>${escapeHtml(t.name)}</td><td>${escapeHtml(t.owner)}</td><td>${escapeHtml(t.start||'-')}</td><td>${escapeHtml(t.end||'-')}</td><td><div class="progress"><div class="progress-bar" style="width:${t.progress||0}%"></div></div></td><td><span class="status ${t.progress>=100?'status-done':t.progress>0?'status-running':'status-not-started'}">${t.progress>=100?'已完成':t.progress>0?'進行中':'未開始'}</span></td><td class="text-end"><button class="btn btn-sm btn-outline-primary" onclick="editTask('${escapeHtml(t.id)}')">編輯</button> <button class="btn btn-sm btn-outline-danger" onclick="deleteTask('${escapeHtml(t.id)}')">刪除</button></td></tr>`).join('') : '<tr><td colspan="7" class="text-center text-secondary py-3">尚無工作項目</td></tr>'; }
+    function saveGanttDates(task, start, end) { const schedule=schedules.find(item=>item.id===task.id); if (!schedule) return; schedule.start=formatDate(start)||schedule.start; schedule.end=formatDate(end)||schedule.end; saveSchedules(); render(); }
+    function saveGanttProgress(task, progress) { const schedule=schedules.find(item=>item.id===task.id); if (!schedule) return; schedule.progress=Math.max(0,Math.min(100,Number(progress)||0)); saveSchedules(); render(); }
+    function renderGantt() { const container=byId('gantt'), tasks=projectTasks(); container.innerHTML=''; if (!tasks.length) { container.innerHTML='<div class="text-secondary py-5 text-center">新增時程後會顯示甘特圖</div>'; ganttInstance=null; return; } const ganttTasks=tasks.map(t=>({id:t.id,name:t.name,start:t.start||t.end||new Date().toISOString().slice(0,10),end:t.end||t.start||new Date().toISOString().slice(0,10),progress:t.progress||0})); ganttInstance=new Gantt(container,ganttTasks,{on_click:task=>{},on_after_date_change:saveGanttDates,on_progress_change:saveGanttProgress,view_mode:'Month',bar_corner_radius:4}); }
+    function renderGanttFullscreen() { const container=byId('ganttFullscreenChart'), tasks=projectTasks(); const p=selectedProject(); byId('ganttProjectName').textContent=p?p.name:'未選擇'; container.innerHTML=''; if (!tasks.length) { container.innerHTML='<div class="text-secondary py-5 text-center">尚無工作項目</div>'; return; } const ganttTasks=tasks.map(t=>({id:t.id,name:t.name,start:t.start||t.end||new Date().toISOString().slice(0,10),end:t.end||t.start||new Date().toISOString().slice(0,10),progress:t.progress||0})); ganttFullscreenInstance=new Gantt(container,ganttTasks,{on_click:task=>{},on_after_date_change:saveGanttDates,on_progress_change:saveGanttProgress,view_mode:'Month',bar_corner_radius:4}); }
     function render() { renderSummary(); renderTable(); renderGantt(); }
     function resetForm() { editingTaskId=''; byId('scheduleForm').reset(); byId('taskProgress').value=0; byId('saveTaskBtn').textContent='新增時程'; byId('cancelEditBtn').classList.add('d-none'); }
     function editTask(id) { const task=schedules.find(t=>t.id===id); if (!task) return; editingTaskId=id; byId('taskName').value=task.name; byId('taskOwner').value=task.owner||''; byId('taskStart').value=task.start||''; byId('taskEnd').value=task.end||''; byId('taskProgress').value=task.progress||0; byId('saveTaskBtn').textContent='保存修改'; byId('cancelEditBtn').classList.remove('d-none'); }
     function deleteTask(id) { if (!confirm('確定刪除此工作項目？')) return; schedules=schedules.filter(t=>t.id!==id); saveSchedules(); render(); }
     function saveTask(event) { event.preventDefault(); if (!selectedProjectId) return; const start=byId('taskStart').value,end=byId('taskEnd').value; if (end < start) { alert('結束日期不可早於開始日期'); return; } if (editingTaskId) { const task=schedules.find(t=>t.id===editingTaskId); if (task) { task.name=byId('taskName').value; task.owner=byId('taskOwner').value; task.start=start; task.end=end; task.progress=Math.max(0,Math.min(100,Number(byId('taskProgress').value)||0)); } resetForm(); } else { schedules.push({id:`task_${Date.now()}`,projectId:selectedProjectId,name:byId('taskName').value,owner:byId('taskOwner').value,start:start,end:end,progress:Math.max(0,Math.min(100,Number(byId('taskProgress').value)||0))}); resetForm(); } saveSchedules(); render(); }
-    document.addEventListener('DOMContentLoaded',()=>{ loadData(); restoreSidebarState(); byId('collapseBtn').addEventListener('click', toggleSidebar); byId('ganttFullscreenBtn').addEventListener('click', toggleGanttFullscreen); byId('ganttCloseBtn').addEventListener('click', toggleGanttFullscreen); document.addEventListener('keydown', e => { if (e.key === 'Escape' && byId('ganttFullscreen').classList.contains('active')) toggleGanttFullscreen(); }); renderProjectOptions(); render(); byId('projectSelect').addEventListener('change',e=>{selectedProjectId=e.target.value; resetForm(); render();}); byId('scheduleForm').addEventListener('submit',saveTask); byId('cancelEditBtn').addEventListener('click',()=>{resetForm();render();}); });
+    function showImportResult(message, type) { byId('importResult').innerHTML=`<div class="import-result import-${type}">${escapeHtml(message)}</div>`; setTimeout(()=>{ byId('importResult').innerHTML=''; }, 5000); }
+    function parseCsvRows(text) { const rows=[], row=[]; let cell='', quoted=false; for(let i=0;i<text.length;i++){ const char=text[i], next=text[i+1]; if(char==='"'&&quoted&&next==='"'){cell+='"';i++;} else if(char==='"'){quoted=!quoted;} else if(char===','&&!quoted){row.push(cell.trim());cell='';} else if((char==='\n'||char==='\r')&&!quoted){if(char==='\r'&&next==='\n')i++;row.push(cell.trim());if(row.some(value=>value!==''))rows.push(row.splice(0));cell='';} else {cell+=char;} } row.push(cell.trim());if(row.some(value=>value!==''))rows.push(row);return rows; }
+    function importCsv(file) { if(!selectedProjectId){showImportResult('請先選擇稽核專案。','warning');return;} const reader=new FileReader(); reader.onload=event=>{const rows=parseCsvRows(String(event.target.result).replace(/^\uFEFF/,''));const headers=rows.shift()||[], expected=['工作項目','負責人員','開始日期','結束日期','進度'], missing=expected.filter(header=>!headers.includes(header));if(missing.length){showImportResult(`匯入失敗：缺少欄位 ${missing.join('、')}`,'error');return;}let added=0;const errors=[];rows.forEach((values,index)=>{const data=Object.fromEntries(headers.map((header,i)=>[header,values[i]||''])), name=data['工作項目'].trim(), start=data['開始日期'].trim(), end=data['結束日期'].trim(), progress=Number(data['進度']);if(!name||!start||!end){errors.push(`第 ${index+2} 列缺少工作項目或日期`);return;}if(!isValidDate(start)||!isValidDate(end)){errors.push(`第 ${index+2} 列日期格式必須為 YYYY-MM-DD`);return;}if(end<start){errors.push(`第 ${index+2} 列結束日期不得早於開始日期`);return;}if(!Number.isFinite(progress)||progress<0||progress>100){errors.push(`第 ${index+2} 列進度須為 0–100`);return;}schedules.push({id:`task_${Date.now()}_${index}`,projectId:selectedProjectId,name,owner:data['負責人員'].trim(),start,end,progress});added++;});if(added){saveSchedules();render();}if(errors.length){showImportResult(`已匯入 ${added} 筆；${errors.join('\n')}`,added?'warning':'error');}else if(added){showImportResult(`匯入成功！新增 ${added} 筆細部時程。`,'success');}else{showImportResult('沒有有效資料可匯入。','warning');}};reader.readAsText(file); }
+    function exportCsv() { if(!selectedProjectId){showImportResult('請先選擇稽核專案。','warning');return;} const rows=[['工作項目','負責人員','開始日期','結束日期','進度'],...projectTasks().map(task=>[task.name,task.owner||'',task.start||'',task.end||'',task.progress??0])], csv='\uFEFF'+rows.map(row=>row.map(value=>`"${String(value).replace(/"/g,'""')}"`).join(',')).join('\n'), url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})), link=document.createElement('a'); link.href=url;link.download='audit_schedule.csv';link.click();URL.revokeObjectURL(url); }
+    document.addEventListener('DOMContentLoaded',()=>{ loadData(); restoreSidebarState(); byId('collapseBtn').addEventListener('click', toggleSidebar); byId('ganttFullscreenBtn').addEventListener('click', toggleGanttFullscreen); byId('ganttCloseBtn').addEventListener('click', toggleGanttFullscreen); document.addEventListener('keydown', e => { if (e.key === 'Escape' && byId('ganttFullscreen').classList.contains('active')) toggleGanttFullscreen(); }); renderProjectOptions(); render(); byId('projectSelect').addEventListener('change',e=>{selectedProjectId=e.target.value; resetForm(); render();}); byId('scheduleForm').addEventListener('submit',saveTask); byId('cancelEditBtn').addEventListener('click',()=>{resetForm();render();}); byId('exportCsv').addEventListener('click',exportCsv); byId('importBtn').addEventListener('click',()=>byId('csvFileInput').click()); byId('csvFileInput').addEventListener('change',event=>{if(event.target.files.length)importCsv(event.target.files[0]);event.target.value='';}); });
   </script>
 </body>
 </html>
