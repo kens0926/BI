@@ -86,7 +86,7 @@
       <div class="row g-2 align-items-center">
         <div class="col-md-2 col-6"><input id="projectNo" class="form-control" placeholder="專案編號"></div>
         <div class="col-md-3 col-6"><input id="projectName" class="form-control" placeholder="專案名稱"></div>
-        <div class="col-md-2 col-6"><select id="category" class="form-select" aria-label="分類"><option value="外部稽核">外部稽核</option><option value="內部稽核" selected>內部稽核</option></select></div>
+        <div class="col-md-2 col-6"><select id="category" class="form-select" aria-label="分類"><option value="外部稽核">外部稽核</option><option value="內部稽核" selected>內部稽核</option><option value="臨時稽核">臨時稽核</option><option value="申訴檢舉">申訴檢舉</option></select></div>
         <div class="col-md-2 col-6"><input id="auditor" class="form-control" placeholder="稽核人員"></div>
         <div class="col-md-2 col-6"><input id="startDate" type="date" class="form-control" aria-label="開始日期"></div>
         <div class="col-md-2 col-6"><input id="endDate" type="date" class="form-control" aria-label="結束日期"></div>
@@ -126,7 +126,7 @@
     <div class="modal-body"><input type="hidden" id="editOriginalId">
       <div class="mb-3"><label for="editProjectNo" class="form-label">專案編號</label><input id="editProjectNo" class="form-control" required></div>
       <div class="mb-3"><label for="editProjectName" class="form-label">專案名稱</label><input id="editProjectName" class="form-control" required></div>
-      <div class="mb-3"><label for="editCategory" class="form-label">分類</label><select id="editCategory" class="form-select"><option value="外部稽核">外部稽核</option><option value="內部稽核">內部稽核</option></select></div>
+      <div class="mb-3"><label for="editCategory" class="form-label">分類</label><select id="editCategory" class="form-select"><option value="外部稽核">外部稽核</option><option value="內部稽核">內部稽核</option><option value="臨時稽核">臨時稽核</option><option value="申訴檢舉">申訴檢舉</option></select></div>
       <div class="mb-3"><label for="editAuditor" class="form-label">稽核人員</label><input id="editAuditor" class="form-control"></div>
       <div class="row"><div class="col-6 mb-3"><label for="editStartDate" class="form-label">開始日期</label><input id="editStartDate" type="date" class="form-control"></div><div class="col-6 mb-3"><label for="editEndDate" class="form-label">結束日期</label><input id="editEndDate" type="date" class="form-control"></div></div>
       <div><label for="editProgress" class="form-label">進度（0–100%）</label><input id="editProgress" type="number" min="0" max="100" class="form-control" required></div>
@@ -139,10 +139,12 @@
     const STORAGE_KEY = 'ia_projects_v1';
     const SCHEDULE_KEY = 'ia_project_schedules_v1';
     const SIDEBAR_STATE_KEY = 'ia_sidebar_collapsed';
+    /*
     const DEFAULT_PROJECTS = [
       { id:'IA001', name:'採購流程稽核', category:'內部稽核', auditor:'David', start:'2026-08-01', end:'2026-08-31', progress:70 },
       { id:'IA002', name:'ERP 系統稽核', category:'外部稽核', auditor:'Amy', start:'2026-07-01', end:'2026-07-25', progress:100 }
     ];
+    */
     let projects = [], chartInstance, ganttInstance, ganttFullscreenInstance;
     const byId = id => document.getElementById(id);
     const escapeHtml = value => String(value || '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[char]);
@@ -266,7 +268,7 @@
     }
     
     function loadProjects() { try { projects = JSON.parse(localStorage.getItem(STORAGE_KEY)) || DEFAULT_PROJECTS; } catch { projects = DEFAULT_PROJECTS; } saveProjects(); }
-    function saveProjects() { localStorage.setItem(STORAGE_KEY, JSON.stringify(projects)); }
+    function saveProjects() { localStorage.setItem(STORAGE_KEY, JSON.stringify(projects)); window.__saveProjectsFile?.(projects); }
     function statusBadge(project) { if (project.progress >= 100) return '<span class="status-done">已完成</span>'; if (isOverdue(project)) return '<span class="status-overdue">逾期</span>'; return '<span class="status-running">進行中</span>'; }
     function renderProjects() {
       byId('projectTableBody').innerHTML = projects.map(p => `<tr><td>${escapeHtml(p.id)}</td><td>${escapeHtml(p.name)}</td><td>${escapeHtml(p.category || '內部稽核')}</td><td>${escapeHtml(p.auditor || '未指派')}</td><td><div class="progress"><div class="progress-bar" style="width:${p.progress}%"></div></div></td><td>${statusBadge(p)}</td><td>${escapeHtml(p.end || '-')}</td><td><button class="btn btn-sm btn-outline-primary" onclick="openEditProject('${escapeHtml(p.id)}')">編輯</button></td></tr>`).join('');
@@ -276,15 +278,49 @@
     function updateChart() { const completed=projects.filter(p=>p.progress>=100).length, overdue=projects.filter(isOverdue).length; chartInstance.data.datasets[0].data=[completed,projects.length-completed-overdue,overdue]; chartInstance.update(); }
     function saveGanttDates(task, start, end) { const project=projects.find(p=>p.id===task.id); if (!project) return; project.start=formatDate(start)||project.start; project.end=formatDate(end)||project.end; saveProjects(); renderProjects(); }
     function saveGanttProgress(task, progress) { const project=projects.find(p=>p.id===task.id); if (!project) return; project.progress=Math.max(0,Math.min(100,Number(progress)||0)); saveProjects(); renderProjects(); }
-    function updateGantt() { const today=new Date().toISOString().slice(0,10), tasks=projects.map(p=>({id:p.id,name:p.name,start:p.start||p.end||today,end:p.end||p.start||today,progress:p.progress})); if (ganttInstance) ganttInstance.refresh(tasks); else ganttInstance=new Gantt('#gantt',tasks,{on_click:task=>{},on_after_date_change:saveGanttDates,on_progress_change:saveGanttProgress,view_mode:'Month',bar_corner_radius:4}); }
-    function renderGanttFullscreen() { const container=byId('ganttFullscreenChart'), today=new Date().toISOString().slice(0,10), tasks=projects.map(p=>({id:p.id,name:p.name,start:p.start||p.end||today,end:p.end||p.start||today,progress:p.progress})); byId('ganttProjectCount').textContent=projects.length; container.innerHTML=''; if (!tasks.length) { container.innerHTML='<div class="text-secondary py-5 text-center">尚無專案</div>'; return; } ganttFullscreenInstance=new Gantt(container,tasks,{on_click:task=>{},on_after_date_change:saveGanttDates,on_progress_change:saveGanttProgress,view_mode:'Month',bar_corner_radius:4}); }
+    function ganttTask(project, today) { const colors={內部稽核:['#60a5fa','#2563eb'],外部稽核:['#fbbf24','#d97706'],臨時稽核:['#86efac','#16a34a'],申訴檢舉:['#fda4af','#e11d48']}[project.category] || ['#60a5fa','#2563eb']; return {id:project.id,name:project.name,start:project.start||project.end||today,end:project.end||project.start||today,progress:project.progress,color:colors[0],color_progress:colors[1]}; }
+    function updateGantt() { const today=new Date().toISOString().slice(0,10), tasks=projects.map(p=>ganttTask(p,today)); if (ganttInstance) ganttInstance.refresh(tasks); else ganttInstance=new Gantt('#gantt',tasks,{on_click:task=>{},on_after_date_change:saveGanttDates,on_progress_change:saveGanttProgress,view_mode:'Month',bar_corner_radius:4}); }
+    function renderGanttFullscreen() { const container=byId('ganttFullscreenChart'), today=new Date().toISOString().slice(0,10), tasks=projects.map(p=>ganttTask(p,today)); byId('ganttProjectCount').textContent=projects.length; container.innerHTML=''; if (!tasks.length) { container.innerHTML='<div class="text-secondary py-5 text-center">尚無專案</div>'; return; } ganttFullscreenInstance=new Gantt(container,tasks,{on_click:task=>{},on_after_date_change:saveGanttDates,on_progress_change:saveGanttProgress,view_mode:'Month',bar_corner_radius:4}); }
     function clearAddForm() { ['projectNo','projectName','auditor','startDate','endDate'].forEach(id => byId(id).value=''); byId('category').value='內部稽核'; }
     function addProject() { const id=byId('projectNo').value.trim() || `P${Date.now()}`, name=byId('projectName').value.trim(), start=byId('startDate').value, end=byId('endDate').value; if (!name) { alert('請輸入專案名稱。'); return; } if (end && start && end<start) { alert('結束日期不可早於開始日期。'); return; } if (projects.some(p=>p.id===id)) { alert('專案編號已存在。'); return; } projects.push({id,name,category:byId('category').value,auditor:byId('auditor').value,start,end,progress:0}); saveProjects(); renderProjects(); clearAddForm(); }
     function openEditProject(id) { const p=projects.find(item=>item.id===id); if (!p) return; byId('editOriginalId').value=p.id; byId('editProjectNo').value=p.id; byId('editProjectName').value=p.name; byId('editCategory').value=p.category||'內部稽核'; byId('editAuditor').value=p.auditor||''; byId('editStartDate').value=p.start||''; byId('editEndDate').value=p.end||''; byId('editProgress').value=p.progress||0; new bootstrap.Modal(byId('editProjectModal')).show(); }
-    function migrateScheduleProjectId(oldId, newId) { if (oldId===newId) return; try { const schedules=JSON.parse(localStorage.getItem(SCHEDULE_KEY)) || []; const updated=schedules.map(task=>task.projectId===oldId ? {...task,projectId:newId} : task); if (updated.some((task,index)=>task!==schedules[index])) localStorage.setItem(SCHEDULE_KEY,JSON.stringify(updated)); } catch { /* Preserve existing schedules if stored data is invalid. */ } }
+    function migrateScheduleProjectId(oldId, newId) { if (oldId===newId) return; try { const schedules=JSON.parse(localStorage.getItem(SCHEDULE_KEY)) || []; const updated=schedules.map(task=>task.projectId===oldId ? {...task,projectId:newId} : task); if (updated.some((task,index)=>task!==schedules[index])) localStorage.setItem(SCHEDULE_KEY,JSON.stringify(updated)); window.__migrateScheduleProjectIdFile?.(oldId,newId,updated); } catch { /* Preserve existing schedules if stored data is invalid. */ } }
     function saveEditedProject() { const oldId=byId('editOriginalId').value, id=byId('editProjectNo').value.trim(), name=byId('editProjectName').value.trim(), start=byId('editStartDate').value, end=byId('editEndDate').value, progress=Math.max(0,Math.min(100,Number(byId('editProgress').value)||0)); if (!name) { alert('請輸入專案名稱。'); return; } if (end && start && end<start) { alert('結束日期不可早於開始日期。'); return; } const p=projects.find(item=>item.id===oldId); if (!p) return; if (id!==oldId && projects.some(item=>item.id===id)) { alert('專案編號已存在。'); return; } p.id=id; p.name=name; p.category=byId('editCategory').value; p.auditor=byId('editAuditor').value; p.start=start; p.end=end; p.progress=progress; migrateScheduleProjectId(oldId,id); saveProjects(); renderProjects(); bootstrap.Modal.getInstance(byId('editProjectModal')).hide(); }
     function exportCsv() { const rows=[['專案編號','專案名稱','分類','稽核人員','開始日期','結束日期','進度'],...projects.map(p=>[p.id,p.name,p.category||'內部稽核',p.auditor||'',p.start||'',p.end||'',p.progress])], csv=rows.map(r=>r.map(cell=>`"${String(cell).replace(/"/g,'""')}"`).join(',')).join('\n'), blob=new Blob([csv],{type:'text/csv'}), url=URL.createObjectURL(blob), link=document.createElement('a'); link.href=url; link.download='audit_projects.csv'; link.click(); URL.revokeObjectURL(url); }
     document.addEventListener('DOMContentLoaded', () => { loadProjects(); restoreSidebarState(); byId('collapseBtn').addEventListener('click', toggleSidebar); byId('ganttFullscreenBtn').addEventListener('click', toggleGanttFullscreen); byId('ganttCloseBtn').addEventListener('click', toggleGanttFullscreen); document.addEventListener('keydown', e => { if (e.key === 'Escape' && byId('ganttFullscreen').classList.contains('active')) toggleGanttFullscreen(); }); byId('importBtn').addEventListener('click', () => byId('csvFileInput').click()); byId('csvFileInput').addEventListener('change', e => { if (e.target.files.length > 0) importCSV(e.target.files[0]); e.target.value = ''; }); chartInstance=new Chart(byId('statusChart'),{type:'doughnut',data:{labels:['Completed','In progress','Overdue'],datasets:[{data:[0,0,0],backgroundColor:['#dcfce7','#dbeafe','#fee2e2'],borderColor:'#fff',borderWidth:2}]},options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{position:'bottom'}}}}); renderProjects(); byId('addBtn').addEventListener('click',addProject); byId('exportCsv').addEventListener('click',exportCsv); byId('editProjectForm').addEventListener('submit',e=>{e.preventDefault(); saveEditedProject();}); });
+  </script>
+  <script>
+    (() => {
+      const FILE_NAME = 'tool-data.json', DB_NAME = 'tool-file-storage', STORE_NAME = 'handles';
+      let directoryHandle, fileHandle, writeQueue = Promise.resolve();
+      const button = document.createElement('button');
+      button.type = 'button'; button.className = 'btn btn-sm btn-outline-secondary ms-2';
+      const setStatus = enabled => { button.textContent = enabled ? '資料檔：已連結' : '選擇資料夾儲存資料'; };
+      const openDb = () => new Promise((resolve, reject) => { const request=indexedDB.open(DB_NAME,1); request.onupgradeneeded=()=>request.result.createObjectStore(STORE_NAME); request.onsuccess=()=>resolve(request.result); request.onerror=()=>reject(request.error); });
+      const getSavedHandle = async () => { const db=await openDb(); return new Promise((resolve,reject)=>{const tx=db.transaction(STORE_NAME);const request=tx.objectStore(STORE_NAME).get('directory');request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);}); };
+      const saveHandle = async handle => { const db=await openDb(); return new Promise((resolve,reject)=>{const tx=db.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).put(handle,'directory');tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);}); };
+      const readFile = async () => { try { const text=await (await fileHandle.getFile()).text(); return text.trim() ? JSON.parse(text) : null; } catch { return null; } };
+      const applyData = stored => {
+        if (!stored || !Array.isArray(stored.projects)) return false;
+        projects=stored.projects;
+        localStorage.setItem(STORAGE_KEY,JSON.stringify(projects));
+        if (Array.isArray(stored.schedules)) localStorage.setItem(SCHEDULE_KEY,JSON.stringify(stored.schedules));
+        renderProjects(); return true;
+      };
+      const snapshot = () => ({ projects, schedules: JSON.parse(localStorage.getItem(SCHEDULE_KEY) || '[]') });
+      const writeData = partial => {
+        if (!fileHandle) return;
+        writeQueue=writeQueue.then(async()=>{ const current=(await readFile()) || {}; const data={version:1,...current,...partial}; const writable=await fileHandle.createWritable(); await writable.write(JSON.stringify(data,null,2)); await writable.close(); }).catch(error=>console.error('無法寫入資料檔：',error)); return writeQueue;
+      };
+      window.__saveProjectsFile = savedProjects => writeData({projects:savedProjects});
+      window.__migrateScheduleProjectIdFile = (oldId,newId,schedules) => writeData({projects,schedules});
+      const connect = async () => {
+        if (!window.showDirectoryPicker) return alert('此瀏覽器不支援 File System Access API，請使用最新版 Chrome 或 Edge。');
+        try { directoryHandle=await window.showDirectoryPicker({mode:'readwrite'}); fileHandle=await directoryHandle.getFileHandle(FILE_NAME,{create:true}); await saveHandle(directoryHandle); const stored=await readFile(); if (!applyData(stored)) await writeData(snapshot()); setStatus(true); } catch (error) { if(error.name!=='AbortError') alert('無法連結資料夾：'+error.message); }
+      };
+      button.onclick=connect;
+      document.addEventListener('DOMContentLoaded',async()=>{ const profile=document.querySelector('.profile'); if(profile) profile.before(button); else (document.querySelector('header') || document.body).append(button); setStatus(false); try { const handle=await getSavedHandle(); if(handle && await handle.queryPermission({mode:'readwrite'})==='granted') { directoryHandle=handle; fileHandle=await directoryHandle.getFileHandle(FILE_NAME,{create:true}); if(applyData(await readFile())) setStatus(true); } } catch {} });
+    })();
   </script>
 </body>
 </html>

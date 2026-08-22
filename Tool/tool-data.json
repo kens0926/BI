@@ -1,0 +1,137 @@
+{
+  "version": 1,
+  "projects": [
+    {
+      "id": "IA001",
+      "name": "資訊安全稽核",
+      "auditor": "David",
+      "start": "2026-08-01",
+      "end": "2026-08-31",
+      "progress": 70
+    },
+    {
+      "id": "IA002",
+      "name": "ERP權限稽核",
+      "auditor": "Amy",
+      "start": "2026-07-01",
+      "end": "2026-07-25",
+      "progress": 100
+    },
+    {
+      "id": "IA003",
+      "name": "年度會計師稽核",
+      "auditor": "會計師",
+      "start": "2026-08-10",
+      "end": "2026-09-04",
+      "progress": 10,
+      "category": "外部稽核"
+    },
+    {
+      "id": "IA004",
+      "name": "銷售稽核",
+      "category": "內部稽核",
+      "auditor": "SG&A",
+      "start": "2026-08-17",
+      "end": "2026-10-16",
+      "progress": 10
+    },
+    {
+      "id": "IA005",
+      "name": "FA工程",
+      "category": "臨時稽核",
+      "auditor": "YC",
+      "start": "2026-09-01",
+      "end": "2026-09-30",
+      "progress": 20
+    },
+    {
+      "id": "IA006",
+      "name": "部品收賄案",
+      "category": "申訴檢舉",
+      "auditor": "YC",
+      "start": "2026-09-01",
+      "end": "2026-10-31",
+      "progress": 30
+    }
+  ],
+  "schedules": [
+    {
+      "id": "S1786276936845",
+      "projectId": "IA001",
+      "name": "Kick off",
+      "owner": "David",
+      "start": "2026-08-03",
+      "end": "2026-08-04",
+      "progress": 100
+    },
+    {
+      "id": "task_1786872456007",
+      "projectId": "IA003",
+      "name": "Kick-off",
+      "owner": "Marks",
+      "start": "2026-08-17",
+      "end": "2026-08-21",
+      "progress": 0
+    },
+    {
+      "id": "task_1787363437993",
+      "projectId": "IA001",
+      "name": "執行查核",
+      "owner": "YC",
+      "start": "2026-08-17",
+      "end": "2026-08-28",
+      "progress": 0
+    },
+    {
+      "id": "task_1787363466733",
+      "projectId": "IA001",
+      "name": "Close meeting",
+      "owner": "David",
+      "start": "2026-08-31",
+      "end": "2026-08-31",
+      "progress": 0
+    }
+  ],
+  "nasUrlDashboard": {
+    "categories": [
+      "全部",
+      "部門資料",
+      "內部系統",
+      "常用網站"
+    ],
+    "links": [
+      {
+        "id": "771ca2cb-af0b-4693-a956-12db6ca09f5e",
+        "name": "稽核組",
+        "address": "\\\\NASOA-TC\\PSO\\稽核組",
+        "type": "nas",
+        "category": "部門資料",
+        "note": "稽核組資料"
+      },
+      {
+        "id": "278f6853-cff5-40f7-a1b7-96560cad663e",
+        "name": "全國法規資料庫",
+        "address": "https://law.moj.gov.tw/",
+        "type": "url",
+        "category": "常用網站",
+        "note": ""
+      },
+      {
+        "id": "6bfc6050-bc60-4a65-9d9d-a5e31e73560a",
+        "name": "稽核組資料備份",
+        "address": "\\\\NASOA-TC\\PSO-AUD\\",
+        "type": "nas",
+        "category": "部門資料",
+        "note": "備份"
+      },
+      {
+        "id": "8762cf10-532c-435c-b2c9-d6671021c2fc",
+        "name": "Google",
+        "type": "url",
+        "address": "www.google.com",
+        "category": "常用網站",
+        "note": "google search"
+      }
+    ]
+  }
+}
